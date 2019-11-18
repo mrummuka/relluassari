@@ -1,2 +1,2 @@
 # relluassari
-Relluassari apuun silloin, kun relaatioiden ratkonta teettää turhan paljon työtä
+Relluassari auttaa silloin, kun relaatioiden ratkonta teettää turhan paljon työtä
