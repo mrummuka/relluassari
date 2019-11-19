@@ -10,8 +10,8 @@ https://youtu.be/I-Q1D7iKB2g
 * Lataa ja asenna Relluassari (https://github.com/mrummuka/relluassari)
 
 ## Käyttöohje
-* Navigoi haluamallesi relaatiot sivulle
-** klikkaamalla tunnettua sanaa Relluassari tekee puolestasi lähdehaun
-** klikkamalla tuntematonta sanaa, Relluassari parsii lähdehaun tulokset, etsii sopivan mittaiset sanat, ja yrittää syöttää niitä relaatioon.
+* Navigoi haluamallesi relaatiot sivulle (https://github.com/mrummuka/relluassari)
+* klikkaamalla tunnettua sanaa Relluassari tekee puolestasi lähdehaun lähteisiin, joita kenties käyttäisit muutoinkin (Wikipedia, Bing, Wiktionary, Ratkojat)
+* klikkamalla tuntematonta sanaa, Relluassari parsii lähdehaun tulokset, etsii sopivan mittaiset sanat, ja yrittää syöttää niitä relaatioon.
 
 Lisää toimintoja Tampermonkey valikon kautta (TODO: dokumentoidaan myöhemmin)
