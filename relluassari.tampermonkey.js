@@ -502,7 +502,7 @@ function stripText(text) {
         return "";
     }
 
-    let ere = /[^a-zA-Z- ]/gi;
+    let ere = /[^a-zA-Zåäö0-9- ]/gi;
     let multispace = /[ ]+/gi;
 
     // strip wiki [] syntax + . + \n + header + footer away
