@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name       Relluassari
+// @name       Relluassari 🤖
 // @namespace    http://tampermonkey.net/
-// @version      0.3
-// @description  Relluassari auttaa relaatioiden ratkonnassa hakemalla valittuja sanoja eri lähteistä ja testaamalla näitä relaatioon puoliautomaattisesti
+// @version      0.4
+// @description  Relluassari 🤖 - auttaa relaatioiden ratkonnassa hakemalla valittuja sanoja eri lähteistä ja testaamalla näitä relaatioon puoliautomaattisesti
 // @author       mrummuka@hotmail.com
 // @include      https://hyotynen.iki.fi/relaatiot/pelaa/
 // @connect      fi.wikipedia.org
@@ -172,6 +172,24 @@ function slowercase(s) {
     return s.toLowerCase()
 }
 
+function ignoreWord(s) {
+    const ignoreWords = [
+        "että", "jotta", "koska", "kun", "jos", "vaikka", "kuin", "kunnes", 
+        "ja", "sekä", "sekä että", "niin", 
+        "tai", "vai", "joko", "eli", 
+        "sillä", "mutta", "paitsi", "vaan", 
+        "alkaen", "mennessä", "asti", "saakka", "viimeistään", 
+        "totta puhuen", "huomioon ottaen", "mukaan lukien", 
+        "koskien", "liittyen", "sisältyen", 
+        "takana", "alla", "päällä", "yllä", "vieressä", "sivulla", "luo", "luokse", "vasten", 
+        "vuoksi", "sijaan", 
+        "jollei", "ellei", "mikäli", "josko", "asemesta", 
+        "minä", "sinä", "hän", "me", "te", "he", 
+        "eräs", "se", "joka", "mikä", "joku", "jokin", "kuka", "ketä", "ketkä", "kukin", 
+        "kumpikin", "molemmat", "moni", "monta", "montaa", "muutama"
+        ]
+    return ignoreWords.includes(s);
+}
 
 // wrapper for generateWordArray for menu item
 // executes word array generation for all visible unknown word lengths
@@ -224,6 +242,11 @@ async function generateWordArrayfor(uwlengths) {
             // remove duplicates
             let uniquelist = Array.from(new Set(wmatches));
             console.debug(JSON.stringify(uniquelist.length + " matches for " + uwlengths[n]));
+            if(uniquelist.length < 10) {
+                for(uidx=0; uidx<uniquelist.length; uidx++) {
+                    console.debug(JSON.stringify("match? : " + uniquelist[uidx] + " for " + uwlengths[n]));
+                }
+            }
             //console.log( "<= " + JSON.stringify( uniquelist ) );
             wordslist = wordslist.concat(uniquelist);
         }
@@ -248,6 +271,7 @@ async function generateWordArrayfor(uwlengths) {
         let uniques = Array.from(new Set(bases));
         uniquewords = uniques;
     }
+    // TODO: add ignoreword filtering here.
 
     GM_setValue("rellusana", uniquewords);
     return uniquewords;
@@ -277,7 +301,7 @@ function testallwords() {
     }
     console.log("Testing " + wordslist.length + " words");
 
-    for (let i = 1; i < wordslist.length; i++) {
+    for (let i = 0; i <= wordslist.length; i++) {
         console.debug("Trying " + wordslist[i]);
         document.arvaukset.arvaus.value = wordslist[i];
         document.arvaukset.onsubmit();
@@ -294,6 +318,7 @@ function getTeemaSana() {
     if (teemasana == undefined || teemasana == null) {
         throw new Error("Teemasana not found");
     }
+    console.debug("Parsed teemasana="+teemasana);
     return teemasana;
 }
 
@@ -309,9 +334,6 @@ function setmouseactions() {
 // courtesy of http://www.howtocreate.co.uk/referencedvariables.html
 function mouseClickActScopePreserver(param) {
     return function () {
-        // RE to extract word lengths
-        let re = /[0-9]+/g
-
         console.debug("Clicked " + param.id);
         //console.debug( JSON.stringify(s) );
         setmouseactions();
@@ -325,9 +347,8 @@ function mouseClickActScopePreserver(param) {
             fetchFullTextfor(clickednode.innerText);
         } else if (clickednode.className == "tuntematon sana" || clickednode.className == "fade-in tuntematon sana" || clickednode.className == "tuntematon vinkki sana") {
             console.log("Clicked tuntematon sana");
-            let wordlens = clickednode.innerText.match(re);
-            // convert string array to number array
-            let nums = wordlens.map(Number);
+
+            let nums = getTuntematonLength( clickednode.innerText );
             let numArr = new Array(nums);
 
             // tuntematon default = extract and test
@@ -429,6 +450,17 @@ function setTunnetutMouseAction() {
     return true;
 }
 
+
+function getTuntematonLength(textContent) {
+    // RE to extract word lengths
+    let re = /[.]+/g
+
+    // parse matches to text array
+    let wordlen = textContent.match(re)
+    // convert string array (containing number of dotss) to number array indicating count (i.e. length of word)
+    let nums = wordlen.map( item => { return item.length });
+    return nums;
+}
 // Parses currently visible unknown word lengths
 // @return array of arrays, with word lengths, where
 // .. each parent array element corrensponds to different tuntematon sana (different id)
@@ -439,20 +471,26 @@ function setTunnetutMouseAction() {
 // <div id="s15" class="tuntematon sana" style="left:410; top:365;">..... (5) ..... (5)</div>
 // would produce [ [7] , [5,5] ]
 function getTuntematonLengths() {
-    // RE to extract word lengths
-    let re = /[0-9]+/g
-
     let tuntematonA = new Array();
     // get unknown words
     let tuntematonO = document.getElementsByClassName("tuntematon sana")
     for (let item of tuntematonO) {
-        // parse matches to text array
-        let wordlen = item.textContent.match(re)
-        // convert string array to number array
-        let nums = wordlen.map(Number)
-        tuntematonA.push(nums)
+        let nums = getTuntematonLength( item.textContent );
+        tuntematonA.push( nums );
     }
     return tuntematonA;
+}
+
+function splitTextToWords( text ) {
+    if (text == undefined || text == null || typeof (text) != "string") {
+        throw new Error("Invalid input! Expected string, got " + JSON.stringify(text))
+    }
+    // hard-coded ignore of wikimedia pages not found // TODO: find a better way 
+    if (text.includes("Wikimedia Error")) {
+        return "";
+    }
+
+
 }
 
 function stripText(text) {
@@ -490,7 +528,7 @@ function stripText(text) {
 // Wrapper for menu item (to run full-text search for teemasana
 // TODO: add search to mouse press on teemasana object
 function fetchFullText() {
-    return fetchFullTextfor(getTeemaSana());
+    return fetchFullTextfor( getTeemaSana() );
 }
 
 
@@ -509,8 +547,7 @@ function fetchFullTextfor(sana) {
             url: wikiurl,
             onload: function (response) {
                 let fulltext = response.responseText;
-                // TODO: how to store what sana the results are for ? previously: teema sana as first array element
-                // wordslist.unshift( getTeemaSana() );
+                //TODO remove stripText and improve word splitting
                 let sanitized = stripText(fulltext);
                 GM_setValue("wikitext", sanitized);
                 console.log("Fetched " + fulltext.length + " chars for " + sana + " from wikipedia");
