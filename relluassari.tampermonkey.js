@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name       Relluassari 🤖
 // @namespace    http://tampermonkey.net/
-// @version      0.4
+// @version      0.41
 // @description  Relluassari 🤖 - auttaa relaatioiden ratkonnassa hakemalla valittuja sanoja eri lähteistä ja testaamalla näitä relaatioon puoliautomaattisesti
 // @author       mrummuka@hotmail.com
 // @include      https://hyotynen.iki.fi/relaatiot/pelaa/
@@ -502,25 +502,11 @@ function stripText(text) {
         return "";
     }
 
-    //  	"\u2013" should be removed, too
-    // TODO: whole regexp thingy should be reversed so that only alphanumerics are accepted and all others cleared
-    const ere = {
-        brackets: /\[|\]|\{|\}/gi,
-        equalsetc: /=|\'|\"|\|/gi,
-        othershit: /\/|\\|\(|\)|\!|\?|-/gi,
-        ln: /\n/gi,
-        dotorcommaorsemi: /\.|\,|\;|\:/gi,
-        multispace: /[ ]{2,}/g
-    }
+    let ere = /[^a-zA-Z- ]/gi;
+    let multispace = /[ ]+/gi;
 
     // strip wiki [] syntax + . + \n + header + footer away
-    let stripped = text.replace(ere.brackets, ' ')
-        .replace(ere.equalsetc, ' ')
-        .replace(ere.othershit, ' ')
-        .replace(ere.dotorcommaorsemi, ' ')
-        .replace(ere.ln, ' ')
-        .replace(ere.multispace, ' ');
-
+    let stripped = text.replace(ere, ' ').replace(multispace, ' ');
     return stripped;
 }
 
