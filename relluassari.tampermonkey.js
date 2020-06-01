@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name       Relluassari 🤖
 // @namespace    http://tampermonkey.net/
-// @version      0.41
+// @version      0.42dev
 // @description  Relluassari 🤖 - auttaa relaatioiden ratkonnassa hakemalla valittuja sanoja eri lähteistä ja testaamalla näitä relaatioon puoliautomaattisesti
 // @author       mrummuka@hotmail.com
 // @include      https://hyotynen.iki.fi/relaatiot/pelaa/
 // @connect      fi.wikipedia.org
 // @connect      fi.wiktionary.org
 // @connect      www.bing.com
-// @connect      www.bing.fi 
+// @connect      www.bing.fi
 // @connect      www.ratkojat.fi
 // @grant       GM_getValue
 // @grant       GM_setValue
@@ -40,7 +40,7 @@ GM_registerMenuCommand("Help", showHelpUsage);
 // wikttext - JSONified string (fulltext of matching Wiktionary search result)
 // ratktext - JSONified string (fulltext of matchin ratkojat search result)
 // 2. for words storage
-// rellusana - JSONified words array 
+// rellusana - JSONified words array
 // 3. for setting search sources on/off
 // searchWikipedia - boolean indicating if wikipedia search is on/off
 // searchBing - boolean indicating if wikipedia search is on/off
@@ -174,18 +174,18 @@ function slowercase(s) {
 
 function ignoreWord(s) {
     const ignoreWords = [
-        "että", "jotta", "koska", "kun", "jos", "vaikka", "kuin", "kunnes", 
-        "ja", "sekä", "sekä että", "niin", 
-        "tai", "vai", "joko", "eli", 
-        "sillä", "mutta", "paitsi", "vaan", 
-        "alkaen", "mennessä", "asti", "saakka", "viimeistään", 
-        "totta puhuen", "huomioon ottaen", "mukaan lukien", 
-        "koskien", "liittyen", "sisältyen", 
-        "takana", "alla", "päällä", "yllä", "vieressä", "sivulla", "luo", "luokse", "vasten", 
-        "vuoksi", "sijaan", 
-        "jollei", "ellei", "mikäli", "josko", "asemesta", 
-        "minä", "sinä", "hän", "me", "te", "he", 
-        "eräs", "se", "joka", "mikä", "joku", "jokin", "kuka", "ketä", "ketkä", "kukin", 
+        "että", "jotta", "koska", "kun", "jos", "vaikka", "kuin", "kunnes",
+        "ja", "sekä", "sekä että", "niin",
+        "tai", "vai", "joko", "eli",
+        "sillä", "mutta", "paitsi", "vaan",
+        "alkaen", "mennessä", "asti", "saakka", "viimeistään",
+        "totta puhuen", "huomioon ottaen", "mukaan lukien",
+        "koskien", "liittyen", "sisältyen",
+        "takana", "alla", "päällä", "yllä", "vieressä", "sivulla", "luo", "luokse", "vasten",
+        "vuoksi", "sijaan",
+        "jollei", "ellei", "mikäli", "josko", "asemesta",
+        "minä", "sinä", "hän", "me", "te", "he",
+        "eräs", "se", "joka", "mikä", "joku", "jokin", "kuka", "ketä", "ketkä", "kukin",
         "kumpikin", "molemmat", "moni", "monta", "montaa", "muutama"
         ]
     return ignoreWords.includes(s);
@@ -223,7 +223,7 @@ async function generateWordArrayfor(uwlengths) {
 
     for (let i = 0; i < uwlengths.length; i++) {
         // for each ID generate own regexp that matches words of that length
-        // TODO: replace starting separator with (?:[^a-zåäö0-9]+) 
+        // TODO: replace starting separator with (?:[^a-zåäö0-9]+)
         // TODO replace ending separator with (?:[^a-zåäö0-9]+)
         let reStr = "(?:[^a-zåäö0-9]+)"
         for (let j = 0; j < uwlengths[i].length; j++) {
@@ -336,6 +336,9 @@ function mouseClickActScopePreserver(param) {
     return function () {
         console.debug("Clicked " + param.id);
         //console.debug( JSON.stringify(s) );
+        // create placeholders for vis
+        createElements();
+
         setmouseactions();
 
         //TODO: add "vihje sana" class (tuntematon)
@@ -343,6 +346,11 @@ function mouseClickActScopePreserver(param) {
         let clickednode = document.getElementById(param.id);
         if (clickednode.className == "teema sana") {
             console.log("Clicked teemasana");
+            setEmpty("ratk")
+            setEmpty("wiki")
+            setEmpty("wikt")
+            setEmpty("bing")
+
             // do teemasana default action e.g. fetch all fulltext
             fetchFullTextfor(clickednode.innerText);
         } else if (clickednode.className == "tuntematon sana" || clickednode.className == "fade-in tuntematon sana" || clickednode.className == "tuntematon vinkki sana") {
@@ -417,7 +425,7 @@ function setTeemaMouseAction() {
     return true;
 }
 
-// Adds mouse click listener to all 'known word' boxes 
+// Adds mouse click listener to all 'known word' boxes
 function setTunnetutMouseAction() {
     let tunnetut = document.getElementsByClassName("tunnettu sana");
     if (tunnetut != undefined && tunnetut != null && tunnetut.length > 0) {
@@ -485,7 +493,7 @@ function splitTextToWords( text ) {
     if (text == undefined || text == null || typeof (text) != "string") {
         throw new Error("Invalid input! Expected string, got " + JSON.stringify(text))
     }
-    // hard-coded ignore of wikimedia pages not found // TODO: find a better way 
+    // hard-coded ignore of wikimedia pages not found // TODO: find a better way
     if (text.includes("Wikimedia Error")) {
         return "";
     }
@@ -497,7 +505,7 @@ function stripText(text) {
     if (text == undefined || text == null || typeof (text) != "string") {
         throw new Error("Invalid input! Expected string, got " + JSON.stringify(text))
     }
-    // hard-coded ignore of wikimedia pages not found // TODO: find a better way 
+    // hard-coded ignore of wikimedia pages not found // TODO: find a better way
     if (text.includes("Wikimedia Error")) {
         return "";
     }
@@ -526,6 +534,8 @@ function fetchFullTextfor(sana) {
 
     if (GM_getValue("searchWikipedia", true) == true) {
         console.debug("Starting direct wiki query for " + sana);
+        setLoading("wiki")
+
         let wikiurl = encodeURI('https://fi.wikipedia.org/wiki/' + sana + "?action=raw");
 
         GM_xmlhttpRequest({
@@ -538,6 +548,7 @@ function fetchFullTextfor(sana) {
                 GM_setValue("wikitext", sanitized);
                 console.log("Fetched " + fulltext.length + " chars for " + sana + " from wikipedia");
                 console.log("Stored " + sanitized.length + " chars for " + sana + " from wikipedia");
+                setReady("wiki")
             },
             onerror: function (response) {
                 console.error("Error " + response.statusText + " retrieving " + sana + " from " + wikiurl)
@@ -549,6 +560,8 @@ function fetchFullTextfor(sana) {
 
     if (GM_getValue("searchBing", true) == true) {
         console.debug("Starting Bing query for " + sana);
+        setLoading("bing")
+
         let bingurl = encodeURI('https://www.bing.com/search?count=100&q=language:fi+' + sana);
 
         GM_xmlhttpRequest({
@@ -562,6 +575,7 @@ function fetchFullTextfor(sana) {
                 let sanitized = stripText(fulltext);
                 GM_setValue("bingtext", sanitized);
                 console.log("Stored " + sanitized.length + " chars for " + sana + " from Bing");
+                setReady("bing")
             },
             onerror: function (response) {
                 console.error("Error " + response.statusText + " retrieving " + sana + " from " + bingurl)
@@ -573,6 +587,8 @@ function fetchFullTextfor(sana) {
 
     if (GM_getValue("searchWiktionary", true) == true) {
         console.debug("Starting wikisanakirja query for " + sana);
+        setLoading("wikt")
+
         let wikisanakirjaurl = encodeURI('https://fi.wiktionary.org/wiki/' + sana.toLowerCase() + "?action=raw");
 
         GM_xmlhttpRequest({
@@ -586,6 +602,7 @@ function fetchFullTextfor(sana) {
                 GM_setValue("wikttext", sanitized);
                 console.log("Fetched " + fulltext.length + " chars for " + sana + " from wikisanakirja");
                 console.log("Stored " + sanitized.length + " chars for " + sana + " from wikisanakirja");
+                setReady("wikt");
             },
             onerror: function (response) {
                 console.error("Error " + response.statusText + " retrieving " + sana + " from " + wikisanakirjaurl)
@@ -597,6 +614,8 @@ function fetchFullTextfor(sana) {
 
     if (GM_getValue("searchRatkojat", true) == true) {
         console.debug("Starting ratkojat query for " + sana);
+        setLoading("ratk")
+
         let ratkojaturl = encodeURI('https://www.ratkojat.fi/hae?s=' + sana.toLowerCase() + '&mode=2');
 
         GM_xmlhttpRequest({
@@ -610,6 +629,7 @@ function fetchFullTextfor(sana) {
                 let sanitized = stripText(fulltext);
                 GM_setValue("ratktext", sanitized);
                 console.log("Stored " + sanitized.length + " chars for " + sana + " from ratkojat");
+                setReady("ratk");
             },
             onerror: function (response) {
                 console.error("Error " + response.statusText + " retrieving " + sana + " from " + ratkojaturl)
@@ -666,6 +686,47 @@ function debugreadcustomfulltext() {
     GM_setValue("wikttext", "");
     GM_setValue("bingtext", sanitized);
 }
+
+// create elements for visualizing load
+function createElements() {
+    if( document.getElementById("ratk") == null ) {
+        let s0 = document.createElement("br");
+        let s1 = document.createElement("span");
+        s1.id="wiki"
+        let s2 = document.createElement("span")
+        s2.id="ratk"
+        let s3 = document.createElement("span")
+        s3.id="wikt"
+        let s4 = document.createElement("span")
+        s4.id="bing"
+        document.getElementById("ratkaistuja").appendChild(s0)
+        document.getElementById("ratkaistuja").appendChild(s1)
+        document.getElementById("ratkaistuja").appendChild(s2)
+        document.getElementById("ratkaistuja").appendChild(s3)
+        document.getElementById("ratkaistuja").appendChild(s4)
+    }
+}
+// map id to visualization string
+function mymap(el) {
+    let mymap = {
+    "ratk" : "R",
+    "wiki" : "W",
+    "wikt" : "T",
+    "bing" : "B"
+    }
+    return mymap[el];
+}
+// set visualization
+function setEmpty(el) {
+    document.getElementById(el).innerHTML = mymap(el) + ": ◯ "
+}
+function setLoading(el) {
+    document.getElementById(el).innerHTML = mymap(el) + ": ◕ "
+}
+function setReady(el) {
+    document.getElementById(el).innerHTML = mymap(el) + ": ⬤ "
+}
+
 
 (function () {
     'use strict'
