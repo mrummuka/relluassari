@@ -501,21 +501,23 @@ function splitTextToWords( text ) {
 
 }
 
+// replace tabs,newlines, multispaces etc with single space
+function stripWhitespace(text) {
+    let multispace = /\s+/gi;
+    let stripped = text.replace(multispace, ' ');
+    return stripped;
+}
+
 function stripText(text) {
     if (text == undefined || text == null || typeof (text) != "string") {
         throw new Error("Invalid input! Expected string, got " + JSON.stringify(text))
     }
-    // hard-coded ignore of wikimedia pages not found // TODO: find a better way
-    if (text.includes("Wikimedia Error")) {
-        return "";
-    }
+    let stripped = stripWhitespace(text);
+    let s = stripped.toLowerCase();
+    let notwordchars = /[^a-zåäö\- ']/gi;
+    let final = s.replace(notwordchars, ' ');
 
-    let ere = /[^a-zA-Zåäö0-9- ]/gi;
-    let multispace = /[ ]+/gi;
-
-    // strip wiki [] syntax + . + \n + header + footer away
-    let stripped = text.replace(ere, ' ').replace(multispace, ' ');
-    return stripped;
+    return final;
 }
 
 
@@ -644,10 +646,9 @@ function fetchFullTextfor(sana) {
 function parseSearchEngResults(htmlres) {
     let el = document.createElement('html');
     el.innerHTML = htmlres;
-    let searchResultCollection = el.getElementsByClassName('b_caption');
+    let searchResultCollection = el.getElementsByClassName('b_attribution');
     let resstr = " ";
     for (let item of searchResultCollection) {
-        console.debug("BING results: " + item.innerText);
         resstr += item.innerText;
         resstr += " ";
     }
