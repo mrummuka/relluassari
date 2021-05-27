@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name       Relluassari 🤖
 // @namespace    http://tampermonkey.net/
-// @version      0.42dev
+// @version      0.43ev
 // @description  Relluassari 🤖 - auttaa relaatioiden ratkonnassa hakemalla valittuja sanoja eri lähteistä ja testaamalla näitä relaatioon puoliautomaattisesti
 // @author       mrummuka@hotmail.com
 // @include      https://hyotynen.iki.fi/relaatiot/pelaa/
@@ -186,7 +186,8 @@ function ignoreWord(s) {
         "jollei", "ellei", "mikäli", "josko", "asemesta",
         "minä", "sinä", "hän", "me", "te", "he",
         "eräs", "se", "joka", "mikä", "joku", "jokin", "kuka", "ketä", "ketkä", "kukin",
-        "kumpikin", "molemmat", "moni", "monta", "montaa", "muutama"
+        "kumpikin", "molemmat", "moni", "monta", "montaa", "muutama",
+        "https", "http", 
         ]
     return ignoreWords.includes(s);
 }
@@ -503,7 +504,7 @@ function splitTextToWords( text ) {
 
 // replace tabs,newlines, multispaces etc with single space
 function stripWhitespace(text) {
-    let multispace = /\s+/gi;
+    let multispace = new RegExp(/\s+/gi);
     let stripped = text.replace(multispace, ' ');
     return stripped;
 }
@@ -512,10 +513,11 @@ function stripText(text) {
     if (text == undefined || text == null || typeof (text) != "string") {
         throw new Error("Invalid input! Expected string, got " + JSON.stringify(text))
     }
-    let stripped = stripWhitespace(text);
-    let s = stripped.toLowerCase();
-    let notwordchars = /[^a-zåäö\- ']/gi;
-    let final = s.replace(notwordchars, ' ');
+    let notwordchars = /[^a-zåäöA-ZÅÄÖ\- ']/gi;
+    let wospecialchrs = text.replace(notwordchars, ' ');
+
+    let stripped = stripWhitespace(wospecialchrs);
+    let final = stripped.toLowerCase();
 
     return final;
 }
@@ -535,7 +537,7 @@ function fetchFullText() {
 function fetchFullTextfor(sana) {
 
     if (GM_getValue("searchWikipedia", true) == true) {
-        console.debug("Starting direct wiki query for " + sana);
+        console.debug("Search for '" + sana + "' <-> [Wikipedia] ");
         setLoading("wiki")
 
         let wikiurl = encodeURI('https://fi.wikipedia.org/wiki/' + sana + "?action=raw");
@@ -546,10 +548,10 @@ function fetchFullTextfor(sana) {
             onload: function (response) {
                 let fulltext = response.responseText;
                 //TODO remove stripText and improve word splitting
+                //GM_setValue("wikitext-original", fulltext);
                 let sanitized = stripText(fulltext);
                 GM_setValue("wikitext", sanitized);
-                console.log("Fetched " + fulltext.length + " chars for " + sana + " from wikipedia");
-                console.log("Stored " + sanitized.length + " chars for " + sana + " from wikipedia");
+                console.debug("[Wikipedia] got " + fulltext.length + " chars text; stored " + sanitized.length );
                 setReady("wiki")
             },
             onerror: function (response) {
@@ -561,7 +563,7 @@ function fetchFullTextfor(sana) {
     }
 
     if (GM_getValue("searchBing", true) == true) {
-        console.debug("Starting Bing query for " + sana);
+        console.debug("Search for '" + sana + "' <-> [Bing] ");
         setLoading("bing")
 
         let bingurl = encodeURI('https://www.bing.com/search?count=100&q=language:fi+' + sana);
@@ -571,12 +573,11 @@ function fetchFullTextfor(sana) {
             url: bingurl,
             onload: function (response) {
                 let htmltext = response.responseText;
-                console.debug("Fetched " + htmltext.length + " chars for " + sana + " from Bing");
-                let fulltext = parseSearchEngResults(htmltext);
-                console.debug("Parsed " + fulltext.length + " chars for " + sana + " from html");
+                let fulltext = parseBingHtml(htmltext);
+                //GM_setValue("bingtext-original", fulltext);
                 let sanitized = stripText(fulltext);
                 GM_setValue("bingtext", sanitized);
-                console.log("Stored " + sanitized.length + " chars for " + sana + " from Bing");
+                console.log("[Bing] got " + htmltext.length + " chars html, " + fulltext.length + " chars text; stored " + sanitized.length );
                 setReady("bing")
             },
             onerror: function (response) {
@@ -588,7 +589,7 @@ function fetchFullTextfor(sana) {
     }
 
     if (GM_getValue("searchWiktionary", true) == true) {
-        console.debug("Starting wikisanakirja query for " + sana);
+        console.debug("Search for '" + sana + "' <-> [Wiktionary] ");
         setLoading("wikt")
 
         let wikisanakirjaurl = encodeURI('https://fi.wiktionary.org/wiki/' + sana.toLowerCase() + "?action=raw");
@@ -598,12 +599,12 @@ function fetchFullTextfor(sana) {
             url: wikisanakirjaurl,
             onload: function (response) {
                 let fulltext = response.responseText;
+                //GM_setValue("wikttext-original", fulltext);
                 // TODO: how to store what sana the results are for ? previously: teema sana as first array element
                 // wordslist.unshift( getTeemaSana() );
                 let sanitized = stripText(fulltext);
                 GM_setValue("wikttext", sanitized);
-                console.log("Fetched " + fulltext.length + " chars for " + sana + " from wikisanakirja");
-                console.log("Stored " + sanitized.length + " chars for " + sana + " from wikisanakirja");
+                console.log("[Wiktionary] got " + fulltext.length + " chars text; stored " + sanitized.length);
                 setReady("wikt");
             },
             onerror: function (response) {
@@ -615,7 +616,7 @@ function fetchFullTextfor(sana) {
     }
 
     if (GM_getValue("searchRatkojat", true) == true) {
-        console.debug("Starting ratkojat query for " + sana);
+        console.debug("Search for '" + sana + "' <-> [ratkojat] ");
         setLoading("ratk")
 
         let ratkojaturl = encodeURI('https://www.ratkojat.fi/hae?s=' + sana.toLowerCase() + '&mode=2');
@@ -625,12 +626,11 @@ function fetchFullTextfor(sana) {
             url: ratkojaturl,
             onload: function (response) {
                 let htmltext = response.responseText;
-                console.debug("Fetched " + htmltext.length + " chars for " + sana + " from ratkojat");
-                let fulltext = parseSearchEngResults2(htmltext);
-                console.debug("Parsed " + fulltext.length + " chars for " + sana + " from html2");
+                let fulltext = parseRatkojatHtml(htmltext);
+                //GM_setValue("ratktext-original", fulltext);
                 let sanitized = stripText(fulltext);
                 GM_setValue("ratktext", sanitized);
-                console.log("Stored " + sanitized.length + " chars for " + sana + " from ratkojat");
+                console.log("[ratkojat] got " + htmltext.length + " chars html, " + fulltext.length + " chars text; stored " + sanitized.length);
                 setReady("ratk");
             },
             onerror: function (response) {
@@ -643,12 +643,13 @@ function fetchFullTextfor(sana) {
 
 }
 // Parses html extracting only relevant text elements from BING query results
-function parseSearchEngResults(htmlres) {
+function parseBingHtml(htmlres) {
     let el = document.createElement('html');
     el.innerHTML = htmlres;
     let searchResultCollection = el.getElementsByClassName('b_attribution');
     let resstr = " ";
     for (let item of searchResultCollection) {
+        console.debug("[Bing] -> " + item.innerText);
         resstr += item.innerText;
         resstr += " ";
     }
@@ -656,13 +657,13 @@ function parseSearchEngResults(htmlres) {
 }
 
 // Parse HTML extracting only relevant text results from ratkojat query
-function parseSearchEngResults2(htmlres) {
+function parseRatkojatHtml(htmlres) {
     let el = document.createElement('html');
     el.innerHTML = htmlres;
     let searchResultCollection = el.getElementsByClassName('w wi');
     let resstr = " ";
     for (let item of searchResultCollection) {
-        console.debug("Ratkojat results: " + item.innerText);
+        console.debug("[Ratkojat] -> " + item.innerText);
         resstr += item.innerText;
         resstr += " ";
     }
