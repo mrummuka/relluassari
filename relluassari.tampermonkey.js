@@ -10,6 +10,7 @@
 // @connect      www.bing.com
 // @connect      www.bing.fi
 // @connect      www.ratkojat.fi
+// @connect      www.synonyymit.fi
 // @grant       GM_getValue
 // @grant       GM_setValue
 // @grant       GM_xmlhttpRequest
@@ -30,6 +31,7 @@ GM_registerMenuCommand("Wikipedia haku päälle/pois", toggleWikipediaSearch);
 GM_registerMenuCommand("Bing haku päälle/pois", toggleBingSearch);
 GM_registerMenuCommand("Wiktionary haku päälle/pois", toggleWiktionarySearch);
 GM_registerMenuCommand("Ratkojat haku päälle/pois", toggleRatkojatSearch);
+GM_registerMenuCommand("Synonyymit haku päälle/pois", toggleSynonyymitSearch);
 GM_registerMenuCommand("Help", showHelpUsage);
 
 // Script currently uses the following Global GM variables:
@@ -113,6 +115,16 @@ function toggleRatkojatSearch() {
     }
 }
 
+function toggleSynonyymitSearch() {
+    let searchRatkojat = GM_getValue("searchSynonyymit", true);
+    if (searchRatkojat == true) {
+        console.log("Search from Synonyymit:off");
+        GM_setValue("searchSynonyymit", false);
+    } else {
+        console.log("Search from Synonyymit:on");
+        GM_setValue("searchSynonyymit", true);
+    }
+}
 
 // prints all words currently in array (for debugging)
 function debugprintFullText() {
@@ -146,6 +158,14 @@ function debugprintFullText() {
         console.warn("No fulltext for Ratkojat stored - fetch one first!");
     } else {
         console.debug("Ratkojat: " + ratktext);
+    }
+
+    let synotext = GM_getValue("synotext", false);
+
+    if (synotext === false) {
+        console.warn("No fulltext for Synonyymit stored - fetch one first!");
+    } else {
+        console.debug("Synonyymit: " + synotext);
     }
 
 }
@@ -187,7 +207,7 @@ function ignoreWord(s) {
         "minä", "sinä", "hän", "me", "te", "he",
         "eräs", "se", "joka", "mikä", "joku", "jokin", "kuka", "ketä", "ketkä", "kukin",
         "kumpikin", "molemmat", "moni", "monta", "montaa", "muutama",
-        "https", "http", 
+        "https", "http", "index" 
         ]
     return ignoreWords.includes(s);
 }
@@ -210,13 +230,14 @@ async function generateWordArrayfor(uwlengths) {
     let bingtext = GM_getValue("bingtext", " "); // bing
     let wikttext = GM_getValue("wikttext", " "); // wiktionary
     let ratktext = GM_getValue("ratktext", " "); // ratkojat
+    let synotext = GM_getValue("synotext", " "); // ratkojat
 
-    if (wikitext === " " && bingtext === " " && wikttext === " " && ratktext === " ") {
+    if (wikitext === " " && bingtext === " " && wikttext === " " && ratktext === " " && synotext === " ") {
         console.warn("No fulltext stored - fetch one first!");
         return;
     }
     // TODO: instead of importing all at once, run three times with different inputs (and calculates statistics)
-    let fulltext = wikitext + " " + bingtext + " " + wikttext + " " + ratktext;
+    let fulltext = wikitext + " " + bingtext + " " + wikttext + " " + ratktext + " " + synotext;
 
     console.log("Selecting words by extracting " + JSON.stringify(uwlengths) + " length words from fulltext");
     // array for all regexp expressions matching tuntematon length words (and multi-word "words")
@@ -273,6 +294,7 @@ async function generateWordArrayfor(uwlengths) {
         uniquewords = uniques;
     }
     // TODO: add ignoreword filtering here.
+    const result = uniquewords.filter(word => !ignoreWord(word));
 
     GM_setValue("rellusana", uniquewords);
     return uniquewords;
@@ -641,6 +663,31 @@ function fetchFullTextfor(sana) {
         GM_setValue("ratktext", "");
     }
 
+    if (GM_getValue("searchSynonyymit", true) == true) {
+        console.debug("Search for '" + sana + "' <-> [synonyymit] ");
+        setLoading("syno")
+
+        let searchUrl = encodeURI('https://www.synonyymit.fi/' + sana.toLowerCase() );
+
+        GM_xmlhttpRequest({
+            method: "GET",
+            url: searchUrl,
+            onload: function (response) {
+                let htmltext = response.responseText;
+                let fulltext = parseSynonyymitHtml(htmltext);
+                let sanitized = stripText(fulltext);
+                GM_setValue("synotext", sanitized);
+                console.log("[synonyymit] html: " + htmltext.length + " chars, text:" + fulltext.length + " chars; result:" + sanitized.length + " chars, "+sanitized.split(" ").length+"  words");
+                setReady("syno");
+            },
+            onerror: function (response) {
+                console.error("Error " + response.statusText + " retrieving " + sana + " from " + ratkojaturl)
+            }
+        });
+    } else {
+        GM_setValue("synotext", "");
+    }
+
 }
 // Parses html extracting only relevant text elements from BING query results
 function parseBingHtml(htmlres) {
@@ -670,6 +717,76 @@ function parseRatkojatHtml(htmlres) {
     return resstr;
 }
 
+// Parse HTML extracting only relevant text results from ratkojat query
+function parseSynonyymitHtml(htmlres) {
+    let el = document.createElement('html');
+    el.innerHTML = htmlres;
+
+    let resstr = " ";
+
+    // 1. taulukko
+    let searchResultCollection = el.getElementsByClassName('first')
+    if( searchResultCollection.length > 0 ) {
+        resultColl = searchResultCollection[0].children;
+
+        for (let item of resultColl) {
+            console.debug("[Synonyymit] -> " + item.textContent);
+            resstr += item.textContent;
+            resstr += " ";
+        }    
+    }
+
+    // päätaulukko
+    searchResultCollection = el.getElementsByClassName('sec');
+    if( searchResultCollection.length > 0 ) {
+        resultColl = searchResultCollection[0].children;
+
+        for (let item of resultColl) {
+            console.debug("[Synonyymit] -> " + item.textContent);
+            resstr += item.textContent;
+            resstr += " ";
+        }
+    }
+
+
+    // liittyvät sanat taulukko
+    searchResultCollection = el.getElementsByClassName('rel');
+    if( searchResultCollection.length > 0 ) {
+        resultColl = searchResultCollection[0].children;
+
+        for (let item of resultColl) {
+            console.debug("[Synonyymit] -> " + item.textContent);
+            resstr += item.textContent;
+            resstr += " ";
+        }
+    }
+
+    // katso myös taulukko
+    if( searchResultCollection.length > 1 ) {
+        resultColl = searchResultCollection[1].children;
+
+        for (let item of resultColl) {
+            console.debug("[Synonyymit] -> " + item.textContent);
+            resstr += item.textContent;
+            resstr += " ";
+        }
+    }
+
+    // läheisiä sanoja taulukko
+    if( searchResultCollection.length > 2 ) {
+        resultColl = searchResultCollection[2].children;
+
+        for (let item of searchResultCollection4) {
+            console.debug("[Synonyymit] -> " + item.textContent);
+            resstr += item.textContent;
+            resstr += " ";
+        }
+    }
+
+    return resstr;
+}
+
+
 function debugreadcustomword() {
     let message = "Syötä haluamasi sana/sanakombinaatio, jolla tehdä haku"
     let userwords = window.prompt(message);
@@ -687,6 +804,7 @@ function debugreadcustomfulltext() {
     GM_setValue("ratktext", "");
     GM_setValue("wikttext", "");
     GM_setValue("bingtext", sanitized);
+    GM_setValue("synotext", "");
 }
 
 // create elements for visualizing load
@@ -701,11 +819,14 @@ function createElements() {
         s3.id="wikt"
         let s4 = document.createElement("span")
         s4.id="bing"
+        let s5 = document.createElement("span")
+        s5.id="syno"
         document.getElementById("ratkaistuja").appendChild(s0)
         document.getElementById("ratkaistuja").appendChild(s1)
         document.getElementById("ratkaistuja").appendChild(s2)
         document.getElementById("ratkaistuja").appendChild(s3)
         document.getElementById("ratkaistuja").appendChild(s4)
+        document.getElementById("ratkaistuja").appendChild(s5)
     }
 }
 // map id to visualization string
@@ -714,7 +835,8 @@ function mymap(el) {
     "ratk" : "R",
     "wiki" : "W",
     "wikt" : "T",
-    "bing" : "B"
+    "bing" : "B",
+    "syno" : "S"
     }
     return mymap[el];
 }
