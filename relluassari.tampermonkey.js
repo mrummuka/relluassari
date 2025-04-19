@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name       Relluassari 🤖
 // @namespace    http://tampermonkey.net/
-// @version      0.43ev
+// @version      0.44dev
 // @description  Relluassari 🤖 - auttaa relaatioiden ratkonnassa hakemalla valittuja sanoja eri lähteistä ja testaamalla näitä relaatioon puoliautomaattisesti
 // @author       mrummuka@hotmail.com
 // @include      https://hyotynen.iki.fi/relaatiot/pelaa/
@@ -11,12 +11,18 @@
 // @connect      www.bing.fi
 // @connect      www.ratkojat.fi
 // @connect      www.synonyymit.fi
+// @resource     JSPANELCSS https://cdn.jsdelivr.net/npm/jspanel4@4.15.0/dist/jspanel.css
+// @require      https://cdn.jsdelivr.net/npm/jspanel4@4.15.0/dist/jspanel.js
 // @grant       GM_getValue
 // @grant       GM_setValue
 // @grant       GM_xmlhttpRequest
 // @grant       GM_registerMenuCommand
 // @grant       GM_openInTab
+// @grant       GM_addStyle
+// @grant       GM_getResourceText
 // ==/UserScript==
+
+/* // @require      https://cdn.jsdelivr.net/npm/@trim21/gm-fetch@0.4.0 */
 
 /*-- GM_registerMenuCommand (menuName, callbackFunction, accessKey)
  */
@@ -27,12 +33,17 @@ GM_registerMenuCommand("Suorita lähdehaku (oma sana)", debugreadcustomword, "C"
 GM_registerMenuCommand("(DEBUG) Print search results", debugprintFullText, "P");
 GM_registerMenuCommand("(DEBUG) Print parsed words", debugprintWords);
 GM_registerMenuCommand("(DEBUG) Syötä hakutulos käsin", debugreadcustomfulltext);
+GM_registerMenuCommand("(TEST) jspanel", createPanels);
 GM_registerMenuCommand("Wikipedia haku päälle/pois", toggleWikipediaSearch);
 GM_registerMenuCommand("Bing haku päälle/pois", toggleBingSearch);
 GM_registerMenuCommand("Wiktionary haku päälle/pois", toggleWiktionarySearch);
 GM_registerMenuCommand("Ratkojat haku päälle/pois", toggleRatkojatSearch);
 GM_registerMenuCommand("Synonyymit haku päälle/pois", toggleSynonyymitSearch);
+GM_registerMenuCommand("DEBUG päälle/pois", toggleDEBUG);
 GM_registerMenuCommand("Help", showHelpUsage);
+
+let jspanel_bing = null, jspanel_wiki = null, jspanel_wikt = null, jspanel_ratk = null, jspanel_syno = null;
+let DEBUG=GM_getValue("DEBUG", false);
 
 // Script currently uses the following Global GM variables:
 // --
@@ -76,9 +87,11 @@ function toggleWikipediaSearch() {
     if (searchWikipedia == true) {
         console.log("Search from Wikipedia:off");
         GM_setValue("searchWikipedia", false);
+        setSrcLoadVisToNA("wiki");
     } else {
         console.log("Search from Wikipedia:on");
         GM_setValue("searchWikipedia", true);
+        setSrcLoadVisToEmpty("wiki");
     }
 }
 
@@ -87,9 +100,11 @@ function toggleBingSearch() {
     if (searchBing == true) {
         console.log("Search from Bing:off");
         GM_setValue("searchBing", false);
+        setSrcLoadVisToNA("bing");
     } else {
         console.log("Search from Bing:on");
         GM_setValue("searchBing", true);
+        setSrcLoadVisToEmpty("bing");
     }
 }
 
@@ -98,9 +113,11 @@ function toggleWiktionarySearch() {
     if (searchWiktionary == true) {
         console.log("Search from Wiktionary:off");
         GM_setValue("searchWiktionary", false);
+        setSrcLoadVisToNA("wikt");
     } else {
         console.log("Search from Wiktionary:on");
         GM_setValue("searchWiktionary", true);
+        setSrcLoadVisToEmpty("wikt");
     }
 }
 
@@ -109,22 +126,150 @@ function toggleRatkojatSearch() {
     if (searchRatkojat == true) {
         console.log("Search from Ratkojat:off");
         GM_setValue("searchRatkojat", false);
+        setSrcLoadVisToNA("ratk");
     } else {
         console.log("Search from Ratkojat:on");
         GM_setValue("searchRatkojat", true);
+        setSrcLoadVisToEmpty("ratk");
     }
 }
 
 function toggleSynonyymitSearch() {
-    let searchRatkojat = GM_getValue("searchSynonyymit", true);
-    if (searchRatkojat == true) {
+    let searchSynonyymit = GM_getValue("searchSynonyymit", true);
+    if (searchSynonyymit == true) {
         console.log("Search from Synonyymit:off");
         GM_setValue("searchSynonyymit", false);
     } else {
         console.log("Search from Synonyymit:on");
         GM_setValue("searchSynonyymit", true);
+        setSrcLoadVisToEmpty("syno");
     }
 }
+
+function toggleDEBUG() {
+    let debug = GM_getValue("DEBUG", true);
+    if (debug == true) {
+        console.log("DEBUG:off");
+        GM_setValue("DEBUG", false);
+        DEBUG=false;
+        jspanel_bing ? jspanel_bing.close() : null;
+        jspanel_wiki ? jspanel_wiki.close() : null;
+        jspanel_wikt ? jspanel_wikt.close() : null;     
+        jspanel_ratk ? jspanel_ratk.close() : null;
+        jspanel_syno ? jspanel_syno.close() : null;
+
+        
+    } else {
+        console.log("DEBUG:on");
+        GM_setValue("DEBUG", true);
+        DEBUG=true;
+        createPanels();
+    }
+}
+
+// create one panel (title = header title)
+function createPanel(title) {
+    return jsPanel.create({
+            theme: 'dark',
+            position: { my: 'left-bottom', at:'left-bottom', autoposition: "right"  },
+            footerToolbar: '<span class="flex flex-grow">retrieed words</span>',
+            panelSize: {
+                width: () => { return Math.min(250);},
+                height: () => { return Math.min(200, window.innerHeight*0.6);}
+            },
+            content: '<p>Words will be loaded here\n</p>',
+            headerTitle: title,
+            container: "footer" // test
+        });
+}
+
+// create all panels 
+function createPanels() {
+    if( jspanel_wiki == undefined || jspanel_wiki == null ) 
+        jspanel_wiki = createPanel("Wiki");
+    if( jspanel_bing == undefined || jspanel_bing == null )
+        jspanel_bing = createPanel("Bing");
+    if( jspanel_ratk == undefined || jspanel_ratk == null )
+        jspanel_ratk = createPanel("Ratkojat");
+    if( jspanel_syno == undefined || jspanel_syno == null )
+        jspanel_syno = createPanel("Synonyymit");
+    if( jspanel_wikt == undefined || jspanel_wikt == null )
+        jspanel_wikt = createPanel("Wiktionary");
+}
+
+/*
+function createPanel() {
+    if( jspanel_wiki == undefined || jspanel_wiki == null ) 
+        jspanel_wiki = jsPanel.create({
+            theme: 'dark',
+            position: { my: 'left-bottom', at:'left-bottom', autoposition: "right"  },
+            footerToolbar: '<span class="flex flex-grow">retrieed words</span>',
+            panelSize: {
+                width: () => { return Math.min(250);},
+                height: () => { return Math.min(200, window.innerHeight*0.6);}
+            },
+            content: '<p>Words will be loaded here\n</p>',
+            headerTitle: 'Wiki',
+            container: "footer" // test
+        });
+
+    if( jspanel_bing == undefined || jspanel_bing == null )
+        jspanel_bing = jsPanel.create({
+            theme: 'dark',
+            position: { my: 'left-bottom', at:'left-bottom', autoposition: "right" },
+            footerToolbar: '<span class="flex flex-grow">retrieed words</span>',
+            panelSize: {
+                width: () => { return Math.min(250);},
+                height: () => { return Math.min(200, window.innerHeight*0.6);}
+            },
+            content: '<p>Words will be loaded here\n</p>',
+            headerTitle: 'Bing',
+            container: "footer" // test
+        });
+
+    if( jspanel_ratk == undefined || jspanel_ratk == null )
+        jspanel_ratk = jsPanel.create({
+            theme: 'dark',
+            position: { my: 'left-bottom', at:'left-bottom', autoposition: "right" },
+            footerToolbar: '<span class="flex flex-grow">retrieed words</span>',
+            panelSize: {
+                width: () => { return Math.min(250);},
+                height: () => { return Math.min(200, window.innerHeight*0.6);}
+            },
+            content: '<p>Words will be loaded here\n</p>',
+            headerTitle: 'Ratkojat',
+            container: "footer" // test
+        });
+
+    if( jspanel_syno == undefined || jspanel_syno == null )
+        jspanel_syno = jsPanel.create({
+            theme: 'dark',
+            position: { my: 'left-bottom', at:'left-bottom', autoposition: "right" },
+            footerToolbar: '<span class="flex flex-grow">retrieed words</span>',
+            panelSize: {
+                width: () => { return Math.min(250);},
+                height: () => { return Math.min(200, window.innerHeight*0.6);}
+            },
+            content: '<p>Words will be loaded here\n</p>',
+            headerTitle: 'Syno',
+            container: "footer" // test
+        });
+
+    if( jspanel_wikt == undefined || jspanel_wikt == null )
+        jspanel_wikt = jsPanel.create({
+            theme: 'dark',
+            position: { my: 'left-bottom', at:'left-bottom', autoposition: "right" },
+            footerToolbar: '<span class="flex flex-grow">retrieed words</span>',
+            panelSize: {
+                width: () => { return Math.min(250);},
+                height: () => { return Math.min(200, window.innerHeight*0.6);}
+            },
+            content: '<p>Words will be loaded here\n</p>',
+            headerTitle: 'Wikt',
+            container: "footer" // test
+        });
+}
+        */
 
 // prints all words currently in array (for debugging)
 function debugprintFullText() {
@@ -225,6 +370,111 @@ function generateWordArray() {
 // @return same data that was stored to global "rellusana"
 
 // TODO : perhaps parameterize also which "fulltext" to use so that the calling function will always decide this
+// TODO: instead of merge all to one list, process in a loop, one by one, and store to array => and visualize to panels
+// only at the end join
+// consider splitting to smaller functions
+
+//TODO: breaks flwo
+
+async function generateWordArrayfor(uwlengths, source) {
+    let fulltext = GM_getValue(source, " "); // wikipedia
+
+    if (fulltext === " ") {
+        console.warn("No fulltext stored for " + source + " - fetch one first!");
+        return [];
+    }
+
+    console.log("Selecting words by extracting " + JSON.stringify(uwlengths) + " length words from fulltext");
+    // array for all regexp expressions matching tuntematon length words (and multi-word "words")
+    let reArr = new Array();
+
+    for (let i = 0; i < uwlengths.length; i++) {
+        // for each ID generate own regexp that matches words of that length
+        // TODO: replace starting separator with (?:[^a-zåäö0-9]+)
+        // TODO replace ending separator with (?:[^a-zåäö0-9]+)
+        let reStr = "(?:[^a-zåäö0-9]+)"
+        for (let j = 0; j < uwlengths[i].length; j++) {
+            reStr = reStr + "[a-z0-9]{" + uwlengths[i][j] + "}[ ]"
+        }
+        reStr = reStr.replace(/.$/, "(?:[^a-zåäö0-9]+)");
+        reArr.push(new RegExp(reStr, "gi"));
+    }
+
+    let wordslist = new Array();
+    for (let n = 0; n < reArr.length; n++) {
+        // RE returns (currently) word matches with whitespaces in beginning & at end
+        let wmatcheswws = fulltext.match(reArr[n]);
+        if (wmatcheswws != null) {
+            // convert to lowercase, and trim beginning/trailing whitespace away
+            let wmatches = wmatcheswws.map(slowercase).map(strim);
+            // remove duplicates
+            let uniquelist = Array.from(new Set(wmatches));
+            console.debug(JSON.stringify(uniquelist.length + " matches for " + uwlengths[n]));
+            if(uniquelist.length < 10) {
+                for(let uidx=0; uidx<uniquelist.length; uidx++) {
+                    console.debug(JSON.stringify("match? : " + uniquelist[uidx] + " for " + uwlengths[n]));
+                }
+            }
+            //console.log( "<= " + JSON.stringify( uniquelist ) );
+            wordslist = wordslist.concat(uniquelist);
+        }
+    }
+
+    // make array unique
+    let uniquewords = Array.from(new Set(wordslist));
+    console.log("Total " + uniquewords.length + " words matched");
+
+    if (GM_getValue("lemmatizeWords", false) == true) {
+        console.log("Lemmatization is on")
+        // convert words to base form
+        let bases = [];
+        for (let i = 0; i < uniquewords.length; i++) {
+            let baseformArr = await convertToBaseForm(uniquewords[i]);
+            console.debug("Converted " + uniquewords[i] + " into " + JSON.stringify(baseformArr));
+            bases = bases.concat(baseformArr);
+        }
+        console.debug("n:" + JSON.stringify(bases))
+
+        // again deduplicate
+        let uniques = Array.from(new Set(bases));
+        uniquewords = uniques;
+    }
+    // TODO: add ignoreword filtering here.
+    const result = uniquewords.filter(word => !ignoreWord(word));
+
+    return result;
+}
+
+
+async function generateWordArrayfor(uwlengths) {
+    console.log("Generating word array for " + JSON.stringify(uwlengths));
+
+    let wikiwords = await generateWordArrayfor(uwlengths, "wikitext");
+    let bingwords = await generateWordArrayfor(uwlengths, "bingtext");
+    let wiktwords = await generateWordArrayfor(uwlengths, "wikttext");
+    let ratkwords = await generateWordArrayfor(uwlengths, "ratktext");
+    let synowords = await generateWordArrayfor(uwlengths, "synotext");
+    
+    console.debug("Wiki words: " + JSON.stringify(wikiwords));
+    jspanel_wiki? replacePanel(jspanel_wiki, JSON.stringify(wikiwords)) : null;
+    jspanel_bing? replacePanel(jspanel_bing, bingwords) : null;
+    jspanel_wikt? replacePanel(jspanel_wikt, wiktwords) : null;
+    jspanel_ratk? replacePanel(jspanel_ratk, ratkwords) : null;
+    jspanel_syno? replacePanel(jspanel_syno, synowords) : null;
+    
+    let allwords = wikiwords.concat(bingwords).concat(wiktwords).concat(ratkwords).concat(synowords);
+
+    // make array unique
+    let uniquewords = Array.from(new Set(allwords));
+    console.log("Total " + uniquewords.length + " words matched");
+
+
+    GM_setValue("rellusana", uniquewords);
+    return uniquewords;
+}
+
+
+/*
 async function generateWordArrayfor(uwlengths) {
     let wikitext = GM_getValue("wikitext", " "); // wikipedia
     let bingtext = GM_getValue("bingtext", " "); // bing
@@ -251,9 +501,10 @@ async function generateWordArrayfor(uwlengths) {
         for (let j = 0; j < uwlengths[i].length; j++) {
             reStr = reStr + "[a-z0-9]{" + uwlengths[i][j] + "}[ ]"
         }
-        reStr.replace((reStr.length - 1), "(?:[^a-zåäö0-9]+)");
+        reStr = reStr.replace(/.$/, "(?:[^a-zåäö0-9]+)");
         reArr.push(new RegExp(reStr, "gi"));
     }
+    
     let wordslist = new Array();
     for (let n = 0; n < reArr.length; n++) {
         // RE returns (currently) word matches with whitespaces in beginning & at end
@@ -265,7 +516,7 @@ async function generateWordArrayfor(uwlengths) {
             let uniquelist = Array.from(new Set(wmatches));
             console.debug(JSON.stringify(uniquelist.length + " matches for " + uwlengths[n]));
             if(uniquelist.length < 10) {
-                for(uidx=0; uidx<uniquelist.length; uidx++) {
+                for(let uidx=0; uidx<uniquelist.length; uidx++) {
                     console.debug(JSON.stringify("match? : " + uniquelist[uidx] + " for " + uwlengths[n]));
                 }
             }
@@ -299,6 +550,8 @@ async function generateWordArrayfor(uwlengths) {
     GM_setValue("rellusana", uniquewords);
     return uniquewords;
 }
+*/
+
 
 
 // returns all words with length = nchar from myarray array
@@ -324,7 +577,7 @@ function testallwords() {
     }
     console.log("Testing " + wordslist.length + " words");
 
-    for (let i = 0; i <= wordslist.length; i++) {
+    for (let i = 0; i < wordslist.length; i++) {
         console.debug("Trying " + wordslist[i]);
         document.arvaukset.arvaus.value = wordslist[i];
         document.arvaukset.onsubmit();
@@ -362,6 +615,7 @@ function mouseClickActScopePreserver(param) {
         // create placeholders for vis
         createElements();
 
+        // TEST if commenting this would help to internal error: too much recursion
         setmouseactions();
 
         //TODO: add "vihje sana" class (tuntematon)
@@ -369,10 +623,18 @@ function mouseClickActScopePreserver(param) {
         let clickednode = document.getElementById(param.id);
         if (clickednode.className == "teema sana") {
             console.log("Clicked teemasana");
-            setEmpty("ratk")
-            setEmpty("wiki")
-            setEmpty("wikt")
-            setEmpty("bing")
+
+            // set default visualization to empty or not in use based on currently stored setting
+            if( GM_getValue("searchWikipedia" ) == true ) setSrcLoadVisToEmpty("wiki");
+            else setSrcLoadVisToNA("wiki");
+            if( GM_getValue("searchBing" ) == true ) setSrcLoadVisToEmpty("bing");
+            else setSrcLoadVisToNA("bing");
+            if( GM_getValue("searchWiktionary" ) == true ) setSrcLoadVisToEmpty("wikt");
+            else setSrcLoadVisToNA("wikt");
+            if( GM_getValue("searchRatkojat" ) == true ) setSrcLoadVisToEmpty("ratk");
+            else setSrcLoadVisToNA("ratk");
+            if( GM_getValue("searchSynonyymit" ) == true ) setSrcLoadVisToEmpty("syno");
+            else setSrcLoadVisToNA("syno");
 
             // do teemasana default action e.g. fetch all fulltext
             fetchFullTextfor(clickednode.innerText);
@@ -539,7 +801,7 @@ function stripText(text) {
     let wospecialchrs = text.replace(notwordchars, ' ');
 
     let stripped = stripWhitespace(wospecialchrs);
-    let final = stripped.toLowerCase();
+    let final = stripped.toLowerCase().trim();
 
     return final;
 }
@@ -560,8 +822,47 @@ function fetchFullTextfor(sana) {
 
     if (GM_getValue("searchWikipedia", true) == true) {
         console.debug("Search for '" + sana + "' <-> [Wikipedia] ");
-        setLoading("wiki")
+        setSrcLoadVisToLoading("wiki")
 
+        let wikisanakirjasearchurl = encodeURI('http://fi.wikipedia.org/w/wiki.phtml?search=' + sana.toLowerCase() );
+
+        GM_xmlhttpRequest({
+            method: "GET",
+            url: wikisanakirjasearchurl,
+            onload: function (response) {
+                let newUrl = response.finalUrl;
+                console.debug("Wikisanakirja search URL: " + newUrl);
+                let wikisanakirjaurl = encodeURI(newUrl + "?action=raw");
+
+                GM_xmlhttpRequest({
+                    method: "GET",
+                    url: wikisanakirjaurl,
+                    onload: function (response) {
+                        let fulltext = response.responseText;
+                        //GM_setValue("wikttext-original", fulltext);
+                        // TODO: how to store what sana the results are for ? previously: teema sana as first array element
+                        // wordslist.unshift( getTeemaSana() );
+                        let sanitized = stripText(fulltext);
+                        GM_setValue("wikttext", sanitized);
+                        if(DEBUG) {
+                            console.debug("Wikipedia: " + sanitized); 
+                            //jspanel_wiki? replacePanel(jspanel_wiki, "Wikipedia: " + sanitized): null;
+                        }
+                        console.log("[Wikipedia] got " + fulltext.length + " chars text; stored " + sanitized.length + " chars, " + sanitized.split(" ").length + " words");
+                        setSrcLoadVisToReady("wiki");
+                    },
+                    onerror: function (response) {
+                        console.error("Error " + response.statusText + " retrieving " + sana + " from " + wikisanakirjaurl)
+                    }
+                });
+        
+            },
+            onerror: function (response) {
+                console.error("Error " + response.statusText + " retrieving " + sana + " from " + wikisanakirjaurl)
+            }
+        });
+
+        /*
         let wikiurl = encodeURI('https://fi.wikipedia.org/wiki/' + sana + "?action=raw");
 
         GM_xmlhttpRequest({
@@ -574,19 +875,21 @@ function fetchFullTextfor(sana) {
                 let sanitized = stripText(fulltext);
                 GM_setValue("wikitext", sanitized);
                 console.debug("[Wikipedia] got " + fulltext.length + " chars text; stored " + sanitized.length );
-                setReady("wiki")
+                setSrcLoadVisToReady("wiki")
             },
             onerror: function (response) {
                 console.error("Error " + response.statusText + " retrieving " + sana + " from " + wikiurl)
             }
         });
+    */
+
     } else {
         GM_setValue("wikitext", "");
     }
 
     if (GM_getValue("searchBing", true) == true) {
         console.debug("Search for '" + sana + "' <-> [Bing] ");
-        setLoading("bing")
+        setSrcLoadVisToLoading("bing")
 
         let bingurl = encodeURI('https://www.bing.com/search?count=100&q=language:fi+' + sana);
 
@@ -600,7 +903,7 @@ function fetchFullTextfor(sana) {
                 let sanitized = stripText(fulltext);
                 GM_setValue("bingtext", sanitized);
                 console.log("[Bing] got " + htmltext.length + " chars html, " + fulltext.length + " chars text; stored " + sanitized.length );
-                setReady("bing")
+                setSrcLoadVisToReady("bing")
             },
             onerror: function (response) {
                 console.error("Error " + response.statusText + " retrieving " + sana + " from " + bingurl)
@@ -612,10 +915,49 @@ function fetchFullTextfor(sana) {
 
     if (GM_getValue("searchWiktionary", true) == true) {
         console.debug("Search for '" + sana + "' <-> [Wiktionary] ");
-        setLoading("wikt")
+        setSrcLoadVisToLoading("wikt")
 
-        let wikisanakirjaurl = encodeURI('https://fi.wiktionary.org/wiki/' + sana.toLowerCase() + "?action=raw");
+        let wikisanakirjasearchurl = encodeURI('http://fi.wiktionary.org/w/wiki.phtml?search=' + sana.toLowerCase() );
 
+        GM_xmlhttpRequest({
+            method: "GET",
+            url: wikisanakirjasearchurl,
+            onload: function (response) {
+                let newUrl = response.finalUrl;
+                console.debug("Wikisanakirja search URL: " + newUrl);
+                let wikisanakirjaurl = encodeURI(newUrl + "?action=raw");
+
+                GM_xmlhttpRequest({
+                    method: "GET",
+                    url: wikisanakirjaurl,
+                    onload: function (response) {
+                        let fulltext = response.responseText;
+                        //GM_setValue("wikttext-original", fulltext);
+                        // TODO: how to store what sana the results are for ? previously: teema sana as first array element
+                        // wordslist.unshift( getTeemaSana() );
+                        let sanitized = stripText(fulltext);
+                        GM_setValue("wikttext", sanitized);
+                        if(DEBUG) {
+                            console.debug("Wikisanakirja: " + sanitized); 
+                            //jspanel_wikt? replacePanel(jspanel_wikt, "Wikisanakirja: " + sanitized): null;
+                        }
+                        console.log("[Wiktionary] got " + fulltext.length + " chars text; stored " + sanitized.length + " chars, " + sanitized.split(" ").length + " words");
+                        setSrcLoadVisToReady("wikt");
+                    },
+                    onerror: function (response) {
+                        console.error("Error " + response.statusText + " retrieving " + sana + " from " + wikisanakirjaurl)
+                    }
+                });
+        
+            },
+            onerror: function (response) {
+                console.error("Error " + response.statusText + " retrieving " + sana + " from " + wikisanakirjaurl)
+            }
+        });
+
+
+        //        let wikisanakirjaurl = encodeURI('https://fi.wiktionary.org/wiki/' + sana.toLowerCase() + "?action=raw");
+/*
         GM_xmlhttpRequest({
             method: "GET",
             url: wikisanakirjaurl,
@@ -627,19 +969,20 @@ function fetchFullTextfor(sana) {
                 let sanitized = stripText(fulltext);
                 GM_setValue("wikttext", sanitized);
                 console.log("[Wiktionary] got " + fulltext.length + " chars text; stored " + sanitized.length);
-                setReady("wikt");
+                setSrcLoadVisToReady("wikt");
             },
             onerror: function (response) {
                 console.error("Error " + response.statusText + " retrieving " + sana + " from " + wikisanakirjaurl)
             }
         });
+*/
     } else {
         GM_setValue("wikttext", "");
     }
 
     if (GM_getValue("searchRatkojat", true) == true) {
         console.debug("Search for '" + sana + "' <-> [ratkojat] ");
-        setLoading("ratk")
+        setSrcLoadVisToLoading("ratk")
 
         let ratkojaturl = encodeURI('https://www.ratkojat.fi/hae?s=' + sana.toLowerCase() + '&mode=2');
 
@@ -652,8 +995,12 @@ function fetchFullTextfor(sana) {
                 //GM_setValue("ratktext-original", fulltext);
                 let sanitized = stripText(fulltext);
                 GM_setValue("ratktext", sanitized);
+                if(DEBUG) {
+                    console.debug("Ratkojat: " + sanitized); 
+                    //jspanel_ratk? replacePanel(jspanel_ratk, "Ratkojat: " + sanitized): null;
+                }
                 console.log("[ratkojat] got " + htmltext.length + " chars html, " + fulltext.length + " chars text; stored " + sanitized.length);
-                setReady("ratk");
+                setSrcLoadVisToReady("ratk");
             },
             onerror: function (response) {
                 console.error("Error " + response.statusText + " retrieving " + sana + " from " + ratkojaturl)
@@ -665,7 +1012,7 @@ function fetchFullTextfor(sana) {
 
     if (GM_getValue("searchSynonyymit", true) == true) {
         console.debug("Search for '" + sana + "' <-> [synonyymit] ");
-        setLoading("syno")
+        setSrcLoadVisToLoading("syno")
 
         let searchUrl = encodeURI('https://www.synonyymit.fi/' + sana.toLowerCase() );
 
@@ -677,8 +1024,12 @@ function fetchFullTextfor(sana) {
                 let fulltext = parseSynonyymitHtml(htmltext);
                 let sanitized = stripText(fulltext);
                 GM_setValue("synotext", sanitized);
+                if(DEBUG) {
+                    console.debug("Synonyymit: " + sanitized); 
+                    //jspanel_syno? replacePanel(jspanel_syno, "Synonyymit: " + sanitized): null;
+                }
                 console.log("[synonyymit] html: " + htmltext.length + " chars, text:" + fulltext.length + " chars; result:" + sanitized.length + " chars, "+sanitized.split(" ").length+"  words");
-                setReady("syno");
+                setSrcLoadVisToReady("syno");
             },
             onerror: function (response) {
                 console.error("Error " + response.statusText + " retrieving " + sana + " from " + ratkojaturl)
@@ -696,7 +1047,7 @@ function parseBingHtml(htmlres) {
     let searchResultCollection = el.getElementsByClassName('b_attribution');
     let resstr = " ";
     for (let item of searchResultCollection) {
-        console.debug("[Bing] -> " + item.innerText);
+        console.debug("[Bing]: " + item.innerText + " -> " + stripText(item.innerText));
         resstr += item.innerText;
         resstr += " ";
     }
@@ -710,14 +1061,14 @@ function parseRatkojatHtml(htmlres) {
     let searchResultCollection = el.getElementsByClassName('w wi');
     let resstr = " ";
     for (let item of searchResultCollection) {
-        console.debug("[Ratkojat] -> " + item.innerText);
+        console.debug("[Ratkojat]: " + item.innerText + " -> " + stripText(item.innerText));
         resstr += item.innerText;
         resstr += " ";
     }
     return resstr;
 }
 
-// Parse HTML extracting only relevant text results from ratkojat query
+// Parse HTML extracting only relevant text results from synonyymit query
 function parseSynonyymitHtml(htmlres) {
     let el = document.createElement('html');
     el.innerHTML = htmlres;
@@ -727,10 +1078,10 @@ function parseSynonyymitHtml(htmlres) {
     // 1. taulukko
     let searchResultCollection = el.getElementsByClassName('first')
     if( searchResultCollection.length > 0 ) {
-        resultColl = searchResultCollection[0].children;
+        let resultColl = searchResultCollection[0].children;
 
         for (let item of resultColl) {
-            console.debug("[Synonyymit] -> " + item.textContent);
+            console.debug("[Synonyymit]: " + item.textContent + " -> " + stripText(item.textContent));
             resstr += item.textContent;
             resstr += " ";
         }    
@@ -739,23 +1090,22 @@ function parseSynonyymitHtml(htmlres) {
     // päätaulukko
     searchResultCollection = el.getElementsByClassName('sec');
     if( searchResultCollection.length > 0 ) {
-        resultColl = searchResultCollection[0].children;
+        let resultColl = searchResultCollection[0].children;
 
         for (let item of resultColl) {
-            console.debug("[Synonyymit] -> " + item.textContent);
+            console.debug("[Synonyymit]: " + item.textContent + " -> " + stripText(item.textContent));
             resstr += item.textContent;
             resstr += " ";
         }
     }
 
-
     // liittyvät sanat taulukko
     searchResultCollection = el.getElementsByClassName('rel');
     if( searchResultCollection.length > 0 ) {
-        resultColl = searchResultCollection[0].children;
+        let resultColl = searchResultCollection[0].children;
 
         for (let item of resultColl) {
-            console.debug("[Synonyymit] -> " + item.textContent);
+            console.debug("[Synonyymit]: " + item.textContent + "-> " + stripText(item.textContent));
             resstr += item.textContent;
             resstr += " ";
         }
@@ -763,10 +1113,10 @@ function parseSynonyymitHtml(htmlres) {
 
     // katso myös taulukko
     if( searchResultCollection.length > 1 ) {
-        resultColl = searchResultCollection[1].children;
+        let resultColl = searchResultCollection[1].children;
 
         for (let item of resultColl) {
-            console.debug("[Synonyymit] -> " + item.textContent);
+            console.debug("[Synonyymit]: " + item.textContent + "-> " + stripText(item.textContent));
             resstr += item.textContent;
             resstr += " ";
         }
@@ -774,9 +1124,9 @@ function parseSynonyymitHtml(htmlres) {
 
     // läheisiä sanoja taulukko
     if( searchResultCollection.length > 2 ) {
-        resultColl = searchResultCollection[2].children;
+        let resultColl = searchResultCollection[2].children;
 
-        for (let item of searchResultCollection4) {
+        for (let item of searchResultCollection) {
             console.debug("[Synonyymit] -> " + item.textContent);
             resstr += item.textContent;
             resstr += " ";
@@ -784,6 +1134,13 @@ function parseSynonyymitHtml(htmlres) {
     }
 
     return resstr;
+}
+
+function addToPanel(jspanel, text) {
+    jspanel.content.innerHTML = jspanel.content.innerHTML + "<p>" + text + "</p>";
+}
+function replacePanel(jspanel, text) {
+    jspanel.content.innerHTML = "<p>" + text + "</p>";
 }
 
 
@@ -841,19 +1198,45 @@ function mymap(el) {
     return mymap[el];
 }
 // set visualization
-function setEmpty(el) {
+function setSrcLoadVisToNA(el) {
+    document.getElementById(el).innerHTML = mymap(el) + ": ❌ "
+}
+function setSrcLoadVisToEmpty(el) {
     document.getElementById(el).innerHTML = mymap(el) + ": ◯ "
 }
-function setLoading(el) {
+function setSrcLoadVisToLoading(el) {
     document.getElementById(el).innerHTML = mymap(el) + ": ◕ "
 }
-function setReady(el) {
+function setSrcLoadVisToReady(el) {
     document.getElementById(el).innerHTML = mymap(el) + ": ⬤ "
 }
 
+function addFooter() {
+    let footer = document.createElement("footer");
+    document.body.appendChild(footer);
+    GM_addStyle ( `
+    footer {
+        position: sticky;
+        bottom: 0;
+        background: black;
+        color: white;
+        padding: 1em;
+        min-height: 11em;
+      }`
+    );
+}
 
 (function () {
     'use strict'
+    addFooter();
+
+    const jspanelcss = GM_getResourceText('JSPANELCSS');
+    GM_addStyle(jspanelcss);
+
+
+    if(DEBUG)
+        createPanels();
+
 
     setmouseactions();
 
