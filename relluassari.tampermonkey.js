@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name       Relluassari 🤖
 // @namespace    http://tampermonkey.net/
-// @version      0.44dev
+// @version      0.46dev
 // @description  Relluassari 🤖 - auttaa relaatioiden ratkonnassa hakemalla valittuja sanoja eri lähteistä ja testaamalla näitä relaatioon puoliautomaattisesti
 // @author       mrummuka@hotmail.com
 // @include      https://hyotynen.iki.fi/relaatiot/pelaa/
@@ -23,6 +23,10 @@
 // ==/UserScript==
 
 /* // @require      https://cdn.jsdelivr.net/npm/@trim21/gm-fetch@0.4.0 */
+
+/* TODO: test https://unpkg.com/languagedetect@2.0.0/lib/LanguageDetect.js 
+to identify and exclude english words from the list
+*/
 
 /*-- GM_registerMenuCommand (menuName, callbackFunction, accessKey)
  */
@@ -352,7 +356,9 @@ function ignoreWord(s) {
         "minä", "sinä", "hän", "me", "te", "he",
         "eräs", "se", "joka", "mikä", "joku", "jokin", "kuka", "ketä", "ketkä", "kukin",
         "kumpikin", "molemmat", "moni", "monta", "montaa", "muutama",
-        "https", "http", "index" 
+        "https", "http", "index", "width", "class", "tools", "night", "theme", "title",
+        "match", "split", "modal", "wikipedia", "model", "false", "true",
+        "wgbreakframes", "wgpopupsflags", "wgulsposition", "interlanguage", "rlpagemodules" 
         ]
     return ignoreWords.includes(s);
 }
@@ -376,7 +382,8 @@ function generateWordArray() {
 
 //TODO: breaks flwo
 
-async function generateWordArrayfor(uwlengths, source) {
+function generateWordArrayforX(uwlengths, source) {
+    console.log("Generating word array for " + JSON.stringify(uwlengths) + " from " + source);
     let fulltext = GM_getValue(source, " "); // wikipedia
 
     if (fulltext === " ") {
@@ -392,12 +399,23 @@ async function generateWordArrayfor(uwlengths, source) {
         // for each ID generate own regexp that matches words of that length
         // TODO: replace starting separator with (?:[^a-zåäö0-9]+)
         // TODO replace ending separator with (?:[^a-zåäö0-9]+)
+
+        // (?:\b|^)[a-zA-ZåäöÅÄÖ]{4}\b <- this is what we are after
+        // (?:\b|^)[a-zA-ZåäöÅÄÖ]{4}\b)[a-zA-ZåäöÅÄÖ]{2} <- or this, if there are multiple numbers like (4),(2)
+        let reStr = "(?:\\s|^)";
+        for (let j = 0; j < uwlengths[i].length; j++) {
+            reStr = reStr + "[a-zA-ZåäöÅÄÖ]{" + uwlengths[i][j] + "}(?:\\s|$)"
+        }
+        reArr.push(new RegExp(reStr, "gi"));
+        
+        /*
         let reStr = "(?:[^a-zåäö0-9]+)"
         for (let j = 0; j < uwlengths[i].length; j++) {
             reStr = reStr + "[a-z0-9]{" + uwlengths[i][j] + "}[ ]"
         }
-        reStr = reStr.replace(/.$/, "(?:[^a-zåäö0-9]+)");
+        reStr = reStr.replace((reStr.length - 1), "(?:[^a-zåäö0-9]+)");
         reArr.push(new RegExp(reStr, "gi"));
+        */
     }
 
     let wordslist = new Array();
@@ -429,7 +447,7 @@ async function generateWordArrayfor(uwlengths, source) {
         // convert words to base form
         let bases = [];
         for (let i = 0; i < uniquewords.length; i++) {
-            let baseformArr = await convertToBaseForm(uniquewords[i]);
+            let baseformArr = convertToBaseForm(uniquewords[i]);
             console.debug("Converted " + uniquewords[i] + " into " + JSON.stringify(baseformArr));
             bases = bases.concat(baseformArr);
         }
@@ -446,17 +464,22 @@ async function generateWordArrayfor(uwlengths, source) {
 }
 
 
-async function generateWordArrayfor(uwlengths) {
+function generateWordArrayfor(uwlengths) {
     console.log("Generating word array for " + JSON.stringify(uwlengths));
 
-    let wikiwords = await generateWordArrayfor(uwlengths, "wikitext");
-    let bingwords = await generateWordArrayfor(uwlengths, "bingtext");
-    let wiktwords = await generateWordArrayfor(uwlengths, "wikttext");
-    let ratkwords = await generateWordArrayfor(uwlengths, "ratktext");
-    let synowords = await generateWordArrayfor(uwlengths, "synotext");
+    let wikiwords = generateWordArrayforX(uwlengths, "wikitext");
+    let bingwords = generateWordArrayforX(uwlengths, "bingtext");
+    let wiktwords = generateWordArrayforX(uwlengths, "wikttext");
+    let ratkwords = generateWordArrayforX(uwlengths, "ratktext");
+    let synowords = generateWordArrayforX(uwlengths, "synotext");
     
     console.debug("Wiki words: " + JSON.stringify(wikiwords));
-    jspanel_wiki? replacePanel(jspanel_wiki, JSON.stringify(wikiwords)) : null;
+    console.debug("Bing words: " + JSON.stringify(bingwords));
+    console.debug("Wiktionary words: " + JSON.stringify(wiktwords));
+    console.debug("Ratkojat words: " + JSON.stringify(ratkwords));
+    console.debug("Synonyymit words: " + JSON.stringify(synowords));
+
+    jspanel_wiki? replacePanel(jspanel_wiki, wikiwords) : null;
     jspanel_bing? replacePanel(jspanel_bing, bingwords) : null;
     jspanel_wikt? replacePanel(jspanel_wikt, wiktwords) : null;
     jspanel_ratk? replacePanel(jspanel_ratk, ratkwords) : null;
@@ -583,7 +606,7 @@ function testallwords() {
         document.arvaukset.onsubmit();
     }
     console.log("Testing all words done.");
-    setmouseactions();
+    //setmouseactions();
 }
 
 // Parses teemasana from document
@@ -820,6 +843,10 @@ function fetchFullText() {
 // @stores - GM global "wikitext"
 function fetchFullTextfor(sana) {
 
+
+    // TODO: kun vastauksena https://fi.wikipedia.org/w/index.php?search=Kilo&title=Toiminnot%3AHaku&profile=advanced&fulltext=1&ns0=1
+    // hakuun lista
+    // iteroi lista yksitellen, avaa joka sivu RAWina ja pura niiden sisältö?
     if (GM_getValue("searchWikipedia", true) == true) {
         console.debug("Search for '" + sana + "' <-> [Wikipedia] ");
         setSrcLoadVisToLoading("wiki")
@@ -832,24 +859,51 @@ function fetchFullTextfor(sana) {
             onload: function (response) {
                 let newUrl = response.finalUrl;
                 console.debug("Wikisanakirja search URL: " + newUrl);
-                let wikisanakirjaurl = encodeURI(newUrl + "?action=raw");
+                let wikisanakirjaurl = newUrl + "?action=raw";
 
                 GM_xmlhttpRequest({
                     method: "GET",
                     url: wikisanakirjaurl,
                     onload: function (response) {
                         let fulltext = response.responseText;
-                        //GM_setValue("wikttext-original", fulltext);
-                        // TODO: how to store what sana the results are for ? previously: teema sana as first array element
-                        // wordslist.unshift( getTeemaSana() );
-                        let sanitized = stripText(fulltext);
-                        GM_setValue("wikttext", sanitized);
-                        if(DEBUG) {
-                            console.debug("Wikipedia: " + sanitized); 
-                            //jspanel_wiki? replacePanel(jspanel_wiki, "Wikipedia: " + sanitized): null;
+
+                        if( fulltext.match(/#REDIRECT \[\[.*\]\]/) ) {
+                            console.debug("Redirect found, fetching new page");
+                            let redirecturl = fulltext.match(/#REDIRECT \[\[(.*)\]\]/)[1];
+                            console.debug("Redirect URL: " + redirecturl);
+                            let redirecturlraw = encodeURI("https://fi.wikipedia.org/wiki/" + redirecturl + "?action=raw");
+                            console.debug("Redirect URL raw: " + redirecturlraw);
+                            GM_xmlhttpRequest({
+                                method: "GET",
+                                url: redirecturlraw,
+                                onload: function (response) {
+                                    let fulltext = response.responseText;
+                                    //TODO remove stripText and improve word splitting
+                                    //GM_setValue("wikitext-original", fulltext);
+                                    let sanitized = stripText(fulltext);
+                                    GM_setValue("wikitext", sanitized);
+                                    if(DEBUG) {
+                                        console.debug("Wikipedia: " + sanitized); 
+                                        //jspanel_wiki? replacePanel(jspanel_wiki, "Wikipedia: " + sanitized): null;
+                                    }
+                                    console.log("[Wikipedia] got " + fulltext.length + " chars text; stored " + sanitized.length + " chars, " + sanitized.split(" ").length + " words");
+                                    setSrcLoadVisToReady("wiki");
+                                },
+                                onerror: function (response) {
+                                    console.error("Error " + response.statusText + " retrieving " + sana + " from " + redirecturlraw)
+                                }
+                            });
                         }
-                        console.log("[Wikipedia] got " + fulltext.length + " chars text; stored " + sanitized.length + " chars, " + sanitized.split(" ").length + " words");
-                        setSrcLoadVisToReady("wiki");
+                        else {
+                            let sanitized = stripText(fulltext);
+                            GM_setValue("wikitext", sanitized);
+                            if(DEBUG) {
+                                console.debug("Wikipedia: " + sanitized); 
+                                //jspanel_wiki? replacePanel(jspanel_wiki, "Wikipedia: " + sanitized): null;
+                            }
+                            console.log("[Wikipedia] got " + fulltext.length + " chars text; stored " + sanitized.length + " chars, " + sanitized.split(" ").length + " words");
+                            setSrcLoadVisToReady("wiki");    
+                        }
                     },
                     onerror: function (response) {
                         console.error("Error " + response.statusText + " retrieving " + sana + " from " + wikisanakirjaurl)
@@ -925,7 +979,7 @@ function fetchFullTextfor(sana) {
             onload: function (response) {
                 let newUrl = response.finalUrl;
                 console.debug("Wikisanakirja search URL: " + newUrl);
-                let wikisanakirjaurl = encodeURI(newUrl + "?action=raw");
+                let wikisanakirjaurl = newUrl + "?action=raw";
 
                 GM_xmlhttpRequest({
                     method: "GET",
@@ -1140,7 +1194,17 @@ function addToPanel(jspanel, text) {
     jspanel.content.innerHTML = jspanel.content.innerHTML + "<p>" + text + "</p>";
 }
 function replacePanel(jspanel, text) {
-    jspanel.content.innerHTML = "<p>" + text + "</p>";
+    let output = "";
+    if( Array.isArray(text) ) {
+        for(let i=0; i<text.length; i++) {
+            output += text[i] + "<br>";
+        }
+        jspanel.content.innerHTML = "<p>" + output + "</p>";
+    }
+    else {
+        jspanel.content.innerHTML = "<p>" + text + "</p>";
+    }
+    
 }
 
 
