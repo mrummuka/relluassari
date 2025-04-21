@@ -852,13 +852,46 @@ function fetchFullTextfor(sana) {
         setSrcLoadVisToLoading("wiki")
 
         let wikisanakirjasearchurl = encodeURI('http://fi.wikipedia.org/w/wiki.phtml?search=' + sana.toLowerCase() );
+        console.debug("Retrieving URL: " + wikisanakirjasearchurl);
+        GM_setValue("wikitext", "");
 
         GM_xmlhttpRequest({
             method: "GET",
             url: wikisanakirjasearchurl,
             onload: function (response) {
                 let newUrl = response.finalUrl;
-                console.debug("Wikisanakirja search URL: " + newUrl);
+                console.debug("Received URL: " + newUrl);
+                
+                if( newUrl.includes("search=") ) {
+                    // iterate through all search results
+                    let htmlSearchResults = response.responseText;
+                    let resultsPages = parseWikiSearchHtml(htmlSearchResults);
+                    for (let i = 0; i < resultsPages.length; i++) {
+                        let pageUrl = "https://fi.wikipedia.org/" + resultsPages[i] + "?action=raw";
+                        console.debug("Page URL: " + pageUrl);
+                        GM_xmlhttpRequest({
+                            method: "GET",
+                            url: pageUrl,
+                            onload: function (response) {
+                                let fulltext = response.responseText;
+                                let sanitized = stripText(fulltext);
+                                let already_found = GM_getValue("wikitext");
+                                GM_setValue("wikitext", already_found + " " +sanitized);
+                                if(DEBUG) {
+                                    console.debug("Wikipedia: " + sanitized); 
+                                    //jspanel_wiki? replacePanel(jspanel_wiki, "Wikipedia: " + sanitized): null;
+                                }
+                                console.log("[Wikipedia] got " + fulltext.length + " chars text; stored " + sanitized.length + " chars, " + sanitized.split(" ").length + " words");
+                                setSrcLoadVisToReady("wiki");
+                            },
+                            onerror: function (response) {
+                                console.error("Error " + response.statusText + " retrieving " + sana + " from " + pageUrl)
+                            }
+                        });
+                    }
+
+                }
+
                 let wikisanakirjaurl = newUrl + "?action=raw";
 
                 GM_xmlhttpRequest({
@@ -867,12 +900,14 @@ function fetchFullTextfor(sana) {
                     onload: function (response) {
                         let fulltext = response.responseText;
 
+                        // if response is to page that is redirecting to another page
                         if( fulltext.match(/#REDIRECT \[\[.*\]\]/) ) {
                             console.debug("Redirect found, fetching new page");
                             let redirecturl = fulltext.match(/#REDIRECT \[\[(.*)\]\]/)[1];
                             console.debug("Redirect URL: " + redirecturl);
                             let redirecturlraw = encodeURI("https://fi.wikipedia.org/wiki/" + redirecturl + "?action=raw");
                             console.debug("Redirect URL raw: " + redirecturlraw);
+
                             GM_xmlhttpRequest({
                                 method: "GET",
                                 url: redirecturlraw,
@@ -881,7 +916,8 @@ function fetchFullTextfor(sana) {
                                     //TODO remove stripText and improve word splitting
                                     //GM_setValue("wikitext-original", fulltext);
                                     let sanitized = stripText(fulltext);
-                                    GM_setValue("wikitext", sanitized);
+                                    let already_found = GM_getValue("wikitext");
+                                    GM_setValue("wikitext", already_found + " " +sanitized);
                                     if(DEBUG) {
                                         console.debug("Wikipedia: " + sanitized); 
                                         //jspanel_wiki? replacePanel(jspanel_wiki, "Wikipedia: " + sanitized): null;
@@ -894,9 +930,11 @@ function fetchFullTextfor(sana) {
                                 }
                             });
                         }
+                        // otherwise assuming it is a valid page
                         else {
                             let sanitized = stripText(fulltext);
-                            GM_setValue("wikitext", sanitized);
+                            let already_found = GM_getValue("wikitext");
+                            GM_setValue("wikitext", already_found + " " +sanitized);
                             if(DEBUG) {
                                 console.debug("Wikipedia: " + sanitized); 
                                 //jspanel_wiki? replacePanel(jspanel_wiki, "Wikipedia: " + sanitized): null;
@@ -1008,28 +1046,8 @@ function fetchFullTextfor(sana) {
                 console.error("Error " + response.statusText + " retrieving " + sana + " from " + wikisanakirjaurl)
             }
         });
-
-
         //        let wikisanakirjaurl = encodeURI('https://fi.wiktionary.org/wiki/' + sana.toLowerCase() + "?action=raw");
-/*
-        GM_xmlhttpRequest({
-            method: "GET",
-            url: wikisanakirjaurl,
-            onload: function (response) {
-                let fulltext = response.responseText;
-                //GM_setValue("wikttext-original", fulltext);
-                // TODO: how to store what sana the results are for ? previously: teema sana as first array element
-                // wordslist.unshift( getTeemaSana() );
-                let sanitized = stripText(fulltext);
-                GM_setValue("wikttext", sanitized);
-                console.log("[Wiktionary] got " + fulltext.length + " chars text; stored " + sanitized.length);
-                setSrcLoadVisToReady("wikt");
-            },
-            onerror: function (response) {
-                console.error("Error " + response.statusText + " retrieving " + sana + " from " + wikisanakirjaurl)
-            }
-        });
-*/
+
     } else {
         GM_setValue("wikttext", "");
     }
@@ -1094,6 +1112,21 @@ function fetchFullTextfor(sana) {
     }
 
 }
+
+// Parses html extracting only relevant text elements from BING query results
+function parseWikiSearchHtml(htmlres) {
+    let el = document.createElement('html');
+    el.innerHTML = htmlres;
+    let searchResultCollection = el.getElementsByClassName('mw-search-result-heading');
+    let resultPages = [];
+    for (let item of searchResultCollection) {
+        let fixedUrl = item.children[0].href.replace("https://hyotynen.iki.fi/", "");
+        console.debug("[Wiki]: search results " + fixedUrl);
+        resultPages.push(fixedUrl);
+    }
+    return resultPages;
+}
+
 // Parses html extracting only relevant text elements from BING query results
 function parseBingHtml(htmlres) {
     let el = document.createElement('html');
