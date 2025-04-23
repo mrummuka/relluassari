@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name       Relluassari 🤖
 // @namespace    http://tampermonkey.net/
-// @version      0.46dev
+// @version      0.47
 // @description  Relluassari 🤖 - auttaa relaatioiden ratkonnassa hakemalla valittuja sanoja eri lähteistä ja testaamalla näitä relaatioon puoliautomaattisesti
 // @author       mrummuka@hotmail.com
 // @include      https://hyotynen.iki.fi/relaatiot/pelaa/
@@ -20,7 +20,7 @@
 // @grant       GM_openInTab
 // @grant       GM_addStyle
 // @grant       GM_getResourceText
-// ==/UserScript==
+// ==/UserScript== 
 
 /* // @require      https://cdn.jsdelivr.net/npm/@trim21/gm-fetch@0.4.0 */
 
@@ -200,80 +200,6 @@ function createPanels() {
     if( jspanel_wikt == undefined || jspanel_wikt == null )
         jspanel_wikt = createPanel("Wiktionary");
 }
-
-/*
-function createPanel() {
-    if( jspanel_wiki == undefined || jspanel_wiki == null ) 
-        jspanel_wiki = jsPanel.create({
-            theme: 'dark',
-            position: { my: 'left-bottom', at:'left-bottom', autoposition: "right"  },
-            footerToolbar: '<span class="flex flex-grow">retrieed words</span>',
-            panelSize: {
-                width: () => { return Math.min(250);},
-                height: () => { return Math.min(200, window.innerHeight*0.6);}
-            },
-            content: '<p>Words will be loaded here\n</p>',
-            headerTitle: 'Wiki',
-            container: "footer" // test
-        });
-
-    if( jspanel_bing == undefined || jspanel_bing == null )
-        jspanel_bing = jsPanel.create({
-            theme: 'dark',
-            position: { my: 'left-bottom', at:'left-bottom', autoposition: "right" },
-            footerToolbar: '<span class="flex flex-grow">retrieed words</span>',
-            panelSize: {
-                width: () => { return Math.min(250);},
-                height: () => { return Math.min(200, window.innerHeight*0.6);}
-            },
-            content: '<p>Words will be loaded here\n</p>',
-            headerTitle: 'Bing',
-            container: "footer" // test
-        });
-
-    if( jspanel_ratk == undefined || jspanel_ratk == null )
-        jspanel_ratk = jsPanel.create({
-            theme: 'dark',
-            position: { my: 'left-bottom', at:'left-bottom', autoposition: "right" },
-            footerToolbar: '<span class="flex flex-grow">retrieed words</span>',
-            panelSize: {
-                width: () => { return Math.min(250);},
-                height: () => { return Math.min(200, window.innerHeight*0.6);}
-            },
-            content: '<p>Words will be loaded here\n</p>',
-            headerTitle: 'Ratkojat',
-            container: "footer" // test
-        });
-
-    if( jspanel_syno == undefined || jspanel_syno == null )
-        jspanel_syno = jsPanel.create({
-            theme: 'dark',
-            position: { my: 'left-bottom', at:'left-bottom', autoposition: "right" },
-            footerToolbar: '<span class="flex flex-grow">retrieed words</span>',
-            panelSize: {
-                width: () => { return Math.min(250);},
-                height: () => { return Math.min(200, window.innerHeight*0.6);}
-            },
-            content: '<p>Words will be loaded here\n</p>',
-            headerTitle: 'Syno',
-            container: "footer" // test
-        });
-
-    if( jspanel_wikt == undefined || jspanel_wikt == null )
-        jspanel_wikt = jsPanel.create({
-            theme: 'dark',
-            position: { my: 'left-bottom', at:'left-bottom', autoposition: "right" },
-            footerToolbar: '<span class="flex flex-grow">retrieed words</span>',
-            panelSize: {
-                width: () => { return Math.min(250);},
-                height: () => { return Math.min(200, window.innerHeight*0.6);}
-            },
-            content: '<p>Words will be loaded here\n</p>',
-            headerTitle: 'Wikt',
-            container: "footer" // test
-        });
-}
-        */
 
 // prints all words currently in array (for debugging)
 function debugprintFullText() {
@@ -843,10 +769,6 @@ function fetchFullText() {
 // @stores - GM global "wikitext"
 function fetchFullTextfor(sana) {
 
-
-    // TODO: kun vastauksena https://fi.wikipedia.org/w/index.php?search=Kilo&title=Toiminnot%3AHaku&profile=advanced&fulltext=1&ns0=1
-    // hakuun lista
-    // iteroi lista yksitellen, avaa joka sivu RAWina ja pura niiden sisältö?
     if (GM_getValue("searchWikipedia", true) == true) {
         console.debug("Search for '" + sana + "' <-> [Wikipedia] ");
         setSrcLoadVisToLoading("wiki")
@@ -862,6 +784,8 @@ function fetchFullTextfor(sana) {
                 let newUrl = response.finalUrl;
                 console.debug("Received URL: " + newUrl);
                 
+                // kun vastauksena https://fi.wikipedia.org/w/index.php?search=Kilo&title=Toiminnot%3AHaku&profile=advanced&fulltext=1&ns0=1
+                // iteroi vastauksen listan yksitellen, avaa joka sivu RAWina ja purkaa niiden sisällön
                 if( newUrl.includes("search=") ) {
                     // iterate through all search results
                     let htmlSearchResults = response.responseText;
@@ -953,27 +877,6 @@ function fetchFullTextfor(sana) {
                 console.error("Error " + response.statusText + " retrieving " + sana + " from " + wikisanakirjaurl)
             }
         });
-
-        /*
-        let wikiurl = encodeURI('https://fi.wikipedia.org/wiki/' + sana + "?action=raw");
-
-        GM_xmlhttpRequest({
-            method: "GET",
-            url: wikiurl,
-            onload: function (response) {
-                let fulltext = response.responseText;
-                //TODO remove stripText and improve word splitting
-                //GM_setValue("wikitext-original", fulltext);
-                let sanitized = stripText(fulltext);
-                GM_setValue("wikitext", sanitized);
-                console.debug("[Wikipedia] got " + fulltext.length + " chars text; stored " + sanitized.length );
-                setSrcLoadVisToReady("wiki")
-            },
-            onerror: function (response) {
-                console.error("Error " + response.statusText + " retrieving " + sana + " from " + wikiurl)
-            }
-        });
-    */
 
     } else {
         GM_setValue("wikitext", "");
@@ -1239,7 +1142,6 @@ function replacePanel(jspanel, text) {
     }
     
 }
-
 
 function debugreadcustomword() {
     let message = "Syötä haluamasi sana/sanakombinaatio, jolla tehdä haku"
