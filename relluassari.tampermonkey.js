@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name       Relluassari 🤖
 // @namespace    http://tampermonkey.net/
-// @version      0.47
+// @version      0.48
 // @description  Relluassari 🤖 - auttaa relaatioiden ratkonnassa hakemalla valittuja sanoja eri lähteistä ja testaamalla näitä relaatioon puoliautomaattisesti
 // @author       mrummuka@hotmail.com
 // @include      https://hyotynen.iki.fi/relaatiot/pelaa/
@@ -20,11 +20,11 @@
 // @grant       GM_openInTab
 // @grant       GM_addStyle
 // @grant       GM_getResourceText
-// ==/UserScript== 
+// ==/UserScript==
 
 /* // @require      https://cdn.jsdelivr.net/npm/@trim21/gm-fetch@0.4.0 */
 
-/* TODO: test https://unpkg.com/languagedetect@2.0.0/lib/LanguageDetect.js 
+/* TODO: test https://unpkg.com/languagedetect@2.0.0/lib/LanguageDetect.js
 to identify and exclude english words from the list
 */
 
@@ -158,11 +158,13 @@ function toggleDEBUG() {
         DEBUG=false;
         jspanel_bing ? jspanel_bing.close() : null;
         jspanel_wiki ? jspanel_wiki.close() : null;
-        jspanel_wikt ? jspanel_wikt.close() : null;     
+        jspanel_wikt ? jspanel_wikt.close() : null;
         jspanel_ratk ? jspanel_ratk.close() : null;
         jspanel_syno ? jspanel_syno.close() : null;
 
-        
+        removeFooter();
+
+
     } else {
         console.log("DEBUG:on");
         GM_setValue("DEBUG", true);
@@ -187,19 +189,47 @@ function createPanel(title) {
         });
 }
 
-// create all panels 
+// create all panels
 function createPanels() {
-    if( jspanel_wiki == undefined || jspanel_wiki == null ) 
-        jspanel_wiki = createPanel("Wiki");
-    if( jspanel_bing == undefined || jspanel_bing == null )
-        jspanel_bing = createPanel("Bing");
-    if( jspanel_ratk == undefined || jspanel_ratk == null )
-        jspanel_ratk = createPanel("Ratkojat");
-    if( jspanel_syno == undefined || jspanel_syno == null )
-        jspanel_syno = createPanel("Synonyymit");
-    if( jspanel_wikt == undefined || jspanel_wikt == null )
-        jspanel_wikt = createPanel("Wiktionary");
+
+    const observer = new MutationObserver((mutations) => {
+    const targetElement = document.getElementById('my-footer-id');
+
+    // Check if the target element has been added to the DOM
+    if (targetElement) {
+        console.log("element found");
+        // Stop tracking
+        observer.disconnect();
+
+        // The target element is available, do something with it
+        console.log('Element is now available');
+            console.debug("creating wiki panel")
+            jspanel_wiki = createPanel("Wiki");
+            console.debug("creating bing panel")
+            jspanel_bing = createPanel("Bing");
+            console.debug("creating ratkojat panel")
+            jspanel_ratk = createPanel("Ratkojat");
+            console.debug("creating syno panel")
+            jspanel_syno = createPanel("Synonyymit");
+            console.debug("creating wikt panel")
+            jspanel_wikt = createPanel("Wiktionary");
+    }
+});
+
+observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+});
+
+
+
+        addFooter();
+
+
+
 }
+
+
 
 // prints all words currently in array (for debugging)
 function debugprintFullText() {
@@ -284,7 +314,7 @@ function ignoreWord(s) {
         "kumpikin", "molemmat", "moni", "monta", "montaa", "muutama",
         "https", "http", "index", "width", "class", "tools", "night", "theme", "title",
         "match", "split", "modal", "wikipedia", "model", "false", "true",
-        "wgbreakframes", "wgpopupsflags", "wgulsposition", "interlanguage", "rlpagemodules" 
+        "wgbreakframes", "wgpopupsflags", "wgulsposition", "interlanguage", "rlpagemodules"
         ]
     return ignoreWords.includes(s);
 }
@@ -333,7 +363,7 @@ function generateWordArrayforX(uwlengths, source) {
             reStr = reStr + "[a-zA-ZåäöÅÄÖ]{" + uwlengths[i][j] + "}(?:\\s|$)"
         }
         reArr.push(new RegExp(reStr, "gi"));
-        
+
         /*
         let reStr = "(?:[^a-zåäö0-9]+)"
         for (let j = 0; j < uwlengths[i].length; j++) {
@@ -398,7 +428,7 @@ function generateWordArrayfor(uwlengths) {
     let wiktwords = generateWordArrayforX(uwlengths, "wikttext");
     let ratkwords = generateWordArrayforX(uwlengths, "ratktext");
     let synowords = generateWordArrayforX(uwlengths, "synotext");
-    
+
     console.debug("Wiki words: " + JSON.stringify(wikiwords));
     console.debug("Bing words: " + JSON.stringify(bingwords));
     console.debug("Wiktionary words: " + JSON.stringify(wiktwords));
@@ -410,7 +440,7 @@ function generateWordArrayfor(uwlengths) {
     jspanel_wikt? replacePanel(jspanel_wikt, wiktwords) : null;
     jspanel_ratk? replacePanel(jspanel_ratk, ratkwords) : null;
     jspanel_syno? replacePanel(jspanel_syno, synowords) : null;
-    
+
     let allwords = wikiwords.concat(bingwords).concat(wiktwords).concat(ratkwords).concat(synowords);
 
     // make array unique
@@ -453,7 +483,7 @@ async function generateWordArrayfor(uwlengths) {
         reStr = reStr.replace(/.$/, "(?:[^a-zåäö0-9]+)");
         reArr.push(new RegExp(reStr, "gi"));
     }
-    
+
     let wordslist = new Array();
     for (let n = 0; n < reArr.length; n++) {
         // RE returns (currently) word matches with whitespaces in beginning & at end
@@ -783,7 +813,7 @@ function fetchFullTextfor(sana) {
             onload: function (response) {
                 let newUrl = response.finalUrl;
                 console.debug("Received URL: " + newUrl);
-                
+
                 // kun vastauksena https://fi.wikipedia.org/w/index.php?search=Kilo&title=Toiminnot%3AHaku&profile=advanced&fulltext=1&ns0=1
                 // iteroi vastauksen listan yksitellen, avaa joka sivu RAWina ja purkaa niiden sisällön
                 if( newUrl.includes("search=") ) {
@@ -802,7 +832,7 @@ function fetchFullTextfor(sana) {
                                 let already_found = GM_getValue("wikitext");
                                 GM_setValue("wikitext", already_found + " " +sanitized);
                                 if(DEBUG) {
-                                    console.debug("Wikipedia: " + sanitized); 
+                                    console.debug("Wikipedia: " + sanitized);
                                     //jspanel_wiki? replacePanel(jspanel_wiki, "Wikipedia: " + sanitized): null;
                                 }
                                 console.log("[Wikipedia] got " + fulltext.length + " chars text; stored " + sanitized.length + " chars, " + sanitized.split(" ").length + " words");
@@ -843,7 +873,7 @@ function fetchFullTextfor(sana) {
                                     let already_found = GM_getValue("wikitext");
                                     GM_setValue("wikitext", already_found + " " +sanitized);
                                     if(DEBUG) {
-                                        console.debug("Wikipedia: " + sanitized); 
+                                        console.debug("Wikipedia: " + sanitized);
                                         //jspanel_wiki? replacePanel(jspanel_wiki, "Wikipedia: " + sanitized): null;
                                     }
                                     console.log("[Wikipedia] got " + fulltext.length + " chars text; stored " + sanitized.length + " chars, " + sanitized.split(" ").length + " words");
@@ -860,18 +890,18 @@ function fetchFullTextfor(sana) {
                             let already_found = GM_getValue("wikitext");
                             GM_setValue("wikitext", already_found + " " +sanitized);
                             if(DEBUG) {
-                                console.debug("Wikipedia: " + sanitized); 
+                                console.debug("Wikipedia: " + sanitized);
                                 //jspanel_wiki? replacePanel(jspanel_wiki, "Wikipedia: " + sanitized): null;
                             }
                             console.log("[Wikipedia] got " + fulltext.length + " chars text; stored " + sanitized.length + " chars, " + sanitized.split(" ").length + " words");
-                            setSrcLoadVisToReady("wiki");    
+                            setSrcLoadVisToReady("wiki");
                         }
                     },
                     onerror: function (response) {
                         console.error("Error " + response.statusText + " retrieving " + sana + " from " + wikisanakirjaurl)
                     }
                 });
-        
+
             },
             onerror: function (response) {
                 console.error("Error " + response.statusText + " retrieving " + sana + " from " + wikisanakirjaurl)
@@ -933,7 +963,7 @@ function fetchFullTextfor(sana) {
                         let sanitized = stripText(fulltext);
                         GM_setValue("wikttext", sanitized);
                         if(DEBUG) {
-                            console.debug("Wikisanakirja: " + sanitized); 
+                            console.debug("Wikisanakirja: " + sanitized);
                             //jspanel_wikt? replacePanel(jspanel_wikt, "Wikisanakirja: " + sanitized): null;
                         }
                         console.log("[Wiktionary] got " + fulltext.length + " chars text; stored " + sanitized.length + " chars, " + sanitized.split(" ").length + " words");
@@ -943,7 +973,7 @@ function fetchFullTextfor(sana) {
                         console.error("Error " + response.statusText + " retrieving " + sana + " from " + wikisanakirjaurl)
                     }
                 });
-        
+
             },
             onerror: function (response) {
                 console.error("Error " + response.statusText + " retrieving " + sana + " from " + wikisanakirjaurl)
@@ -971,7 +1001,7 @@ function fetchFullTextfor(sana) {
                 let sanitized = stripText(fulltext);
                 GM_setValue("ratktext", sanitized);
                 if(DEBUG) {
-                    console.debug("Ratkojat: " + sanitized); 
+                    console.debug("Ratkojat: " + sanitized);
                     //jspanel_ratk? replacePanel(jspanel_ratk, "Ratkojat: " + sanitized): null;
                 }
                 console.log("[ratkojat] got " + htmltext.length + " chars html, " + fulltext.length + " chars text; stored " + sanitized.length);
@@ -1000,7 +1030,7 @@ function fetchFullTextfor(sana) {
                 let sanitized = stripText(fulltext);
                 GM_setValue("synotext", sanitized);
                 if(DEBUG) {
-                    console.debug("Synonyymit: " + sanitized); 
+                    console.debug("Synonyymit: " + sanitized);
                     //jspanel_syno? replacePanel(jspanel_syno, "Synonyymit: " + sanitized): null;
                 }
                 console.log("[synonyymit] html: " + htmltext.length + " chars, text:" + fulltext.length + " chars; result:" + sanitized.length + " chars, "+sanitized.split(" ").length+"  words");
@@ -1074,7 +1104,7 @@ function parseSynonyymitHtml(htmlres) {
             console.debug("[Synonyymit]: " + item.textContent + " -> " + stripText(item.textContent));
             resstr += item.textContent;
             resstr += " ";
-        }    
+        }
     }
 
     // päätaulukko
@@ -1140,7 +1170,7 @@ function replacePanel(jspanel, text) {
     else {
         jspanel.content.innerHTML = "<p>" + text + "</p>";
     }
-    
+
 }
 
 function debugreadcustomword() {
@@ -1212,6 +1242,8 @@ function setSrcLoadVisToReady(el) {
 
 function addFooter() {
     let footer = document.createElement("footer");
+    footer.setAttribute("id", "my-footer-id");
+
     document.body.appendChild(footer);
     GM_addStyle ( `
     footer {
@@ -1225,9 +1257,12 @@ function addFooter() {
     );
 }
 
+function removeFooter() {
+    document.getElementsByTagName("footer")[0].remove();
+}
+
 (function () {
     'use strict'
-    addFooter();
 
     const jspanelcss = GM_getResourceText('JSPANELCSS');
     GM_addStyle(jspanelcss);
